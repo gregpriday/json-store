@@ -2,7 +2,7 @@
  * Validation utilities for store operations
  */
 
-import type { Key, Document } from "./types.js";
+import type { Key, Document, SchemaRef, SchemaValidator, ValidationMode, ValidationResult } from "./types.js";
 
 /**
  * Valid characters for type and ID: alphanumeric, underscore, dash, dot
@@ -152,5 +152,36 @@ export function validateTypeName(typeName: string): void {
   // Reject names starting with underscore or dot (reserved for internal use)
   if (typeName.startsWith("_") || typeName.startsWith(".")) {
     throw new Error(`Type name cannot start with "_" or ".": "${typeName}"`);
+  }
+}
+
+/**
+ * Validate a document against its schema
+ * @param doc - Document to validate
+ * @param schemaRef - Schema reference
+ * @param validator - Schema validator instance
+ * @param mode - Validation mode
+ * @returns Validation result
+ */
+export function validateWithSchema(
+  doc: Document,
+  schemaRef: SchemaRef,
+  validator: SchemaValidator,
+  mode: ValidationMode
+): ValidationResult {
+  return validator.validate(doc, schemaRef, mode);
+}
+
+/**
+ * Validate a SchemaRef format
+ * @param ref - Schema reference to validate
+ * @throws Error if format is invalid
+ */
+export function validateSchemaRef(ref: string): asserts ref is SchemaRef {
+  const pattern = /^schema\/[a-zA-Z0-9_-]+@\d+$/;
+  if (!pattern.test(ref)) {
+    throw new Error(
+      `Invalid SchemaRef format: "${ref}". ` + `Must match pattern: schema/<kind>@<major> (e.g., "schema/city@1")`
+    );
   }
 }

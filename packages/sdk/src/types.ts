@@ -3,6 +3,129 @@
  */
 
 /**
+ * Schema reference format: schema/<kind>@<major>
+ * @example "schema/city@1"
+ */
+export type SchemaRef = `schema/${string}@${number}`;
+
+/**
+ * Validation mode for schema enforcement
+ */
+export type ValidationMode = "strict" | "lenient" | "off";
+
+/**
+ * Validation error codes
+ */
+export type ValidationErrorCode =
+  | "required"
+  | "type"
+  | "enum"
+  | "format"
+  | "additional"
+  | "ref"
+  | "custom"
+  | "pattern"
+  | "minimum"
+  | "maximum"
+  | "minLength"
+  | "maxLength";
+
+/**
+ * Validation error with JSON Pointer path
+ */
+export interface ValidationError {
+  /** Error code categorizing the type of validation failure */
+  code: ValidationErrorCode;
+  /** JSON Pointer path to the failing field (e.g., "/address/city") */
+  pointer: string;
+  /** Human-readable error message */
+  message: string;
+  /** Additional context about the error */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Result of schema validation
+ */
+export interface ValidationResult {
+  /** True if validation passed, false otherwise */
+  ok: boolean;
+  /** Array of validation errors (empty if ok is true) */
+  errors: ValidationError[];
+}
+
+/**
+ * Schema registry interface for managing JSON Schemas
+ */
+export interface SchemaRegistry {
+  /**
+   * Load all schemas from the registry directory
+   * @param rootDir - Root directory containing _meta/schemas/
+   */
+  loadAll(rootDir: string): Promise<void>;
+
+  /**
+   * Get raw schema JSON by reference
+   * @param ref - Schema reference (e.g., "schema/city@1")
+   * @returns Schema object or null if not found
+   */
+  get(ref: SchemaRef): object | null;
+
+  /**
+   * Get compiled validation function for a schema
+   * @param ref - Schema reference (e.g., "schema/city@1")
+   * @returns Compiled validation function
+   */
+  getCompiled(ref: SchemaRef): ((data: any) => boolean) | null;
+
+  /**
+   * Resolve a $ref within a schema
+   * @param ref - Schema reference
+   * @param jsonPtr - Optional JSON Pointer within the schema
+   * @returns Resolved schema fragment
+   */
+  resolveRef(ref: SchemaRef, jsonPtr?: string): object | null;
+
+  /**
+   * Check if a schema exists
+   * @param ref - Schema reference
+   * @returns True if schema exists
+   */
+  has(ref: SchemaRef): boolean;
+
+  /**
+   * List all schema references in the registry
+   * @returns Array of schema references
+   */
+  list(): SchemaRef[];
+}
+
+/**
+ * Schema validator interface
+ */
+export interface SchemaValidator {
+  /**
+   * Validate a document against its schema
+   * @param doc - Document to validate
+   * @param schemaRef - Schema reference
+   * @param mode - Validation mode
+   * @returns Validation result
+   */
+  validate(doc: Document, schemaRef: SchemaRef, mode: ValidationMode): ValidationResult;
+
+  /**
+   * Register custom format validators
+   * @param formats - Map of format name to validator function
+   */
+  registerFormats(formats: Record<string, (value: string) => boolean>): void;
+}
+
+/**
+ * Custom format validator function
+ */
+export type FormatValidator = (value: string) => boolean;
+
+/**
  * Configuration options for opening a store
  */
 export interface StoreOptions {
@@ -20,6 +143,12 @@ export interface StoreOptions {
   indexes?: Record<string, string[]>;
   /** Maximum concurrency for format operations (default: 16, range: 1-64) */
   formatConcurrency?: number;
+  /** Schema validation mode (default: "off") */
+  schemaMode?: ValidationMode;
+  /** Custom format validators for JSON Schema validation */
+  customFormats?: Record<string, FormatValidator>;
+  /** Default schema mappings by kind: { kind: SchemaRef } */
+  defaultSchemas?: Record<string, SchemaRef>;
 }
 
 /**
@@ -38,6 +167,10 @@ export interface Key {
 export type Document = Record<string, unknown> & {
   type: string;
   id: string;
+  /** Optional kind field for grouping related types */
+  kind?: string;
+  /** Optional schema reference for validation */
+  schemaRef?: SchemaRef;
 };
 
 /**
