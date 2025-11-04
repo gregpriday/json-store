@@ -22,6 +22,10 @@ export type {
   Store,
 } from "./types.js";
 
+// Re-export cache types
+export type { CacheEntry, CacheOptions, CacheStats } from "./cache.js";
+export { DocumentCache } from "./cache.js";
+
 // Re-export utilities
 export { stableStringify, normalizeJSON, jsonEqual } from "./format.js";
 export { matches, project, sortDocuments, paginate, getPath } from "./query.js";
