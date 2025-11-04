@@ -3,6 +3,28 @@
  */
 
 /**
+ * Markdown reference - can be a simple path string or extended format with integrity and rendering
+ */
+export type MarkdownRef =
+  | string
+  | {
+      /** Relative path to markdown file (POSIX-style, normalized, ending in .md) */
+      path: string;
+      /** Optional SHA-256 hash for integrity verification */
+      sha256?: string;
+      /** Optional rendering configuration */
+      render?: {
+        /** Relative path to cached HTML output (must be under .cache/) */
+        htmlPath?: string;
+      };
+    };
+
+/**
+ * Map of markdown field names to their references
+ */
+export type MarkdownMap = Record<string, MarkdownRef>;
+
+/**
  * Configuration options for opening a store
  */
 export interface StoreOptions {
@@ -20,6 +42,13 @@ export interface StoreOptions {
   indexes?: Record<string, string[]>;
   /** Maximum concurrency for format operations (default: 16, range: 1-64) */
   formatConcurrency?: number;
+  /** Markdown sidecar configuration (opt-in feature) */
+  markdownSidecars?: {
+    /** Enable markdown sidecar support (default: false) */
+    enabled: boolean;
+    /** Allow Layout Option 2 (sidecar folder) - default: false, prefer Layout 1 */
+    allowLayout2?: boolean;
+  };
 }
 
 /**
@@ -102,6 +131,16 @@ export interface WriteOptions {
   gitCommit?: string;
   /** Optional batch identifier for grouping commits */
   gitBatch?: string;
+  /** Optional markdown content for sidecar files (field name → content) */
+  markdown?: Record<string, string | Buffer>;
+}
+
+/**
+ * Options for get operations
+ */
+export interface GetOptions {
+  /** Include markdown content in the response (default: false) */
+  includeMarkdown?: boolean;
 }
 
 /**
@@ -180,9 +219,10 @@ export interface Store {
   /**
    * Retrieve a document by key
    * @param key - Document key (type and id)
-   * @returns Document if found, null otherwise
+   * @param opts - Optional get options (include markdown, etc.)
+   * @returns Document if found, null otherwise. If includeMarkdown is true, returns document with _markdown field containing markdown content
    */
-  get(key: Key): Promise<Document | null>;
+  get(key: Key, opts?: GetOptions): Promise<Document | null>;
 
   /**
    * Remove a document
@@ -239,6 +279,22 @@ export interface Store {
    * @returns Detailed statistics object
    */
   detailedStats(): Promise<DetailedStats>;
+
+  /**
+   * Read markdown content for a specific field
+   * @param key - Document key (type and id)
+   * @param fieldKey - Field name in the md map
+   * @returns Markdown content as string
+   */
+  readMarkdown(key: Key, fieldKey: string): Promise<string>;
+
+  /**
+   * Write markdown content for a specific field
+   * @param key - Document key (type and id)
+   * @param fieldKey - Field name in the md map
+   * @param content - Markdown content to write
+   */
+  writeMarkdown(key: Key, fieldKey: string, content: string | Buffer): Promise<void>;
 
   /**
    * Close the store and clean up resources
