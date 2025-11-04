@@ -1,3 +1,0 @@
-# Enforce LF line endings for JSON data files to ensure byte-stable formatting
-# across platforms (prevents CRLF/LF conversion issues)
-data/** text eol=lf
