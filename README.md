@@ -95,10 +95,7 @@ JSON Store supports a Mango-style query language:
 {
   "type": "task",
   "filter": {
-    "$and": [
-      { "status": { "$in": ["open", "ready"] } },
-      { "priority": { "$gte": 5 } }
-    ]
+    "$and": [{ "status": { "$in": ["open", "ready"] } }, { "priority": { "$gte": 5 } }]
   },
   "projection": { "id": 1, "title": 1, "priority": 1 },
   "sort": { "priority": -1, "title": 1 },
@@ -191,41 +188,49 @@ This is the initial scaffolding for JSON Store. The following components are cur
 ### Planned Implementation
 
 #### Stage 2 - Core File I/O
+
 - [ ] Atomic file write operations
 - [ ] Document read/write/delete
 - [ ] Directory structure creation
 
 #### Stage 3 - SDK CRUD Operations
+
 - [ ] In-memory document cache
 - [ ] Full CRUD implementation
 - [ ] List operations
 
 #### Stage 4 - Query Engine
+
 - [ ] Full Mango operator support
 - [ ] Sorting and pagination
 - [ ] Projection
 
 #### Stage 5 - CLI Implementation
+
 - [ ] Wire up all commands
 - [ ] File and stdin input
 - [ ] Pretty output formatting
 
 #### Stage 6 - Optional Indexes
+
 - [ ] Sidecar equality indexes
 - [ ] Index maintenance on writes
 - [ ] Fast path for indexed queries
 
 #### Stage 7 - MCP Server
+
 - [ ] Wire up tool implementations
 - [ ] Git commit support
 - [ ] Batch commit coalescing
 
 #### Stage 8 - Frontend
+
 - [ ] Document browsing
 - [ ] Client-side query execution
 - [ ] Caching and manifest support
 
 #### Stage 9 - Documentation
+
 - [ ] API reference
 - [ ] Query language guide
 - [ ] MCP tool catalog

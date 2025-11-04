@@ -18,7 +18,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["json", "database", "cli", "git"],
+  "keywords": [
+    "json",
+    "database",
+    "cli",
+    "git"
+  ],
   "license": "MIT",
   "dependencies": {
     "@jsonstore/sdk": "workspace:*",

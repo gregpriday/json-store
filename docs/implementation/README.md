@@ -50,21 +50,27 @@ This folder contains all documentation needed to implement JSON Store v0.1.0. **
 ## Batch Overview
 
 ### Batch 1: Foundation (Days 1-2)
+
 **Start immediately** ✅
+
 - Issue #1: Atomic file I/O
 - Issue #2: In-memory cache
 
 **Workers**: 2 parallel
 
 ### Batch 2: Core Store (Days 3-4)
+
 **Depends on**: Batch 1
+
 - Issue #3: Store CRUD operations
 - Issue #4: Query execution engine
 
 **Workers**: 2 (with some sequencing)
 
 ### Batch 3: User Interfaces (Days 5-8)
+
 **Depends on**: Batch 2
+
 - Issue #5: CLI commands
 - Issue #6: MCP server
 - Issue #7: Equality indexes
@@ -73,7 +79,9 @@ This folder contains all documentation needed to implement JSON Store v0.1.0. **
 **Workers**: 4 parallel
 
 ### Batch 4: Polish (Days 8-9)
+
 **Depends on**: Batch 3
+
 - Issue #9: Stats operation
 - Integration testing
 - Bug fixes
@@ -81,7 +89,9 @@ This folder contains all documentation needed to implement JSON Store v0.1.0. **
 **Workers**: 1-2
 
 ### Batch 5: Validation (Days 10-12)
+
 **Depends on**: Batch 4
+
 - Issue #10: E2E integration tests
 - Issue #11: Documentation
 
@@ -89,15 +99,15 @@ This folder contains all documentation needed to implement JSON Store v0.1.0. **
 
 ## File Guide
 
-| File | Purpose | Read When |
-|------|---------|-----------|
-| **BATCHES.md** | Work organization | **Before starting work** |
-| implementation-plan.md | Project overview | Planning phase |
-| spec.md | Technical spec | Designing features |
-| testing-guide.md | Testing standards | Writing tests |
-| git-workflow.md | Git practices | Making commits |
-| mcp-primer.md | MCP concepts | Implementing MCP server |
-| README.md | This file | Finding your way |
+| File                   | Purpose           | Read When                |
+| ---------------------- | ----------------- | ------------------------ |
+| **BATCHES.md**         | Work organization | **Before starting work** |
+| implementation-plan.md | Project overview  | Planning phase           |
+| spec.md                | Technical spec    | Designing features       |
+| testing-guide.md       | Testing standards | Writing tests            |
+| git-workflow.md        | Git practices     | Making commits           |
+| mcp-primer.md          | MCP concepts      | Implementing MCP server  |
+| README.md              | This file         | Finding your way         |
 
 ## Getting Started with a Batch
 
@@ -124,11 +134,13 @@ This folder contains all documentation needed to implement JSON Store v0.1.0. **
 ## Progress Tracking
 
 See **[implementation-plan.md](./implementation-plan.md)** for:
+
 - Overall progress table
 - Dependency graph
 - Acceptance criteria
 
 See **Issue #12** for:
+
 - Release checklist
 - Completion tracking
 
@@ -137,6 +149,7 @@ See **Issue #12** for:
 **This entire folder will be deleted** after v0.1.0 release.
 
 Permanent documentation will be in:
+
 - `/README.md` - Main README
 - `/docs/api-reference.md` - API docs
 - `/docs/query-guide.md` - Query language

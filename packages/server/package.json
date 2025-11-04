@@ -20,7 +20,14 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["json", "database", "mcp", "server", "ai", "agent"],
+  "keywords": [
+    "json",
+    "database",
+    "mcp",
+    "server",
+    "ai",
+    "agent"
+  ],
   "license": "MIT",
   "dependencies": {
     "@jsonstore/sdk": "workspace:*",
