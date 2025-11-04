@@ -20,8 +20,9 @@ import type {
 import { DocumentCache } from "./cache.js";
 import { validateDocument, validateName, validateKey } from "./validation.js";
 import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
-import { evaluateQuery, matches, project } from "./query.js";
+import { evaluateQuery, matches, project, getPath } from "./query.js";
 import { stableStringify } from "./format.js";
+import { IndexManager } from "./indexes.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -32,6 +33,7 @@ const execFile = promisify(execFileCallback);
 class JSONStore implements Store {
   #options: Required<StoreOptions>;
   #cache: DocumentCache;
+  #indexManager: IndexManager;
 
   constructor(options: StoreOptions) {
     // Resolve root to absolute path for consistent cache keys
@@ -42,6 +44,8 @@ class JSONStore implements Store {
       indent: options.indent ?? 2,
       stableKeyOrder: options.stableKeyOrder ?? "alpha",
       watch: options.watch ?? false,
+      enableIndexes: options.enableIndexes ?? false,
+      indexes: options.indexes ?? {},
     };
 
     // Initialize cache with default settings
@@ -49,6 +53,12 @@ class JSONStore implements Store {
     this.#cache = new DocumentCache({
       maxSize: 10000,
       root: resolvedRoot,
+    });
+
+    // Initialize index manager
+    this.#indexManager = new IndexManager(resolvedRoot, {
+      indent: this.#options.indent,
+      stableKeyOrder: this.#options.stableKeyOrder,
     });
   }
 
@@ -60,6 +70,16 @@ class JSONStore implements Store {
     // Validate key and document
     validateKey(key);
     validateDocument(key, doc);
+
+    // Get old document for index updates (if indexes enabled)
+    let oldDoc: Document | null = null;
+    if (this.#options.enableIndexes) {
+      try {
+        oldDoc = await this.get(key);
+      } catch {
+        // Document doesn't exist yet - that's fine
+      }
+    }
 
     // Canonicalize document with stable formatting
     const content = stableStringify(doc, this.#options.indent, this.#options.stableKeyOrder);
@@ -87,6 +107,16 @@ class JSONStore implements Store {
 
     // Avoid serving stale data after concurrent writers; next read will repopulate safely.
     this.#cache.delete(filePath);
+
+    // Update indexes (if enabled and document changed)
+    if (this.#options.enableIndexes && !unchanged) {
+      const fields = this.#getIndexedFields(key.type);
+      for (const field of fields) {
+        const oldValue = oldDoc ? getPath(oldDoc, field) : undefined;
+        const newValue = getPath(doc, field);
+        await this.#indexManager.updateIndex(key.type, field, key.id, oldValue, newValue);
+      }
+    }
 
     // Optional git commit (non-blocking, logs errors)
     if (!unchanged && opts?.gitCommit) {
@@ -178,11 +208,30 @@ class JSONStore implements Store {
     validateKey(key);
     const filePath = this.getFilePath(key);
 
+    // Get document for index updates (if indexes enabled)
+    let doc: Document | null = null;
+    if (this.#options.enableIndexes) {
+      try {
+        doc = await this.get(key);
+      } catch {
+        // Document doesn't exist - removal is idempotent
+      }
+    }
+
     // Remove document (idempotent - no error if doesn't exist)
     await removeDocument(filePath);
 
     // Clear from cache
     this.#cache.delete(filePath);
+
+    // Update indexes (if enabled and document existed)
+    if (this.#options.enableIndexes && doc) {
+      const fields = this.#getIndexedFields(key.type);
+      for (const field of fields) {
+        const value = getPath(doc, field);
+        await this.#indexManager.updateIndex(key.type, field, key.id, value, undefined);
+      }
+    }
 
     // Optional git commit (non-blocking, logs errors)
     if (opts?.gitCommit) {
@@ -226,12 +275,31 @@ class JSONStore implements Store {
       validateName(spec.type, "type");
     }
 
+    // Check for index fast path: equality filter on indexed field
+    if (
+      this.#options.enableIndexes &&
+      spec.type &&
+      this.#isEqualityFilter(spec.filter)
+    ) {
+      const eqFilter = this.#isEqualityFilter(spec.filter);
+      if (eqFilter && (await this.#indexManager.hasIndex(spec.type, eqFilter.field))) {
+        const result = await this.#queryWithIndex(spec, eqFilter);
+
+        if (process.env.JSONSTORE_DEBUG) {
+          const duration = performance.now() - startTime;
+          console.error(
+            `[JSONSTORE_DEBUG] query: ${result.length} results, ${duration.toFixed(2)}ms, indexPath=true, type=${spec.type}, field=${eqFilter.field}`
+          );
+        }
+
+        return result;
+      }
+    }
+
     // Check for fast path: single type, simple ID-based filter, no sort/projection
-    let _usedFastPath = false;
     if (spec.type && !spec.sort && !spec.projection && this.canUseFastPath(spec.filter)) {
       const ids = this.extractIdsFromFilter(spec.filter);
       if (ids) {
-        _usedFastPath = true;
         const docs: Document[] = [];
 
         for (const id of ids) {
@@ -357,12 +425,111 @@ class JSONStore implements Store {
     return matches(doc, filter);
   }
 
-  async ensureIndex(_type: string, _field: string): Promise<void> {
-    throw new Error("Not implemented yet");
+  /**
+   * Check if filter is a simple equality filter
+   * Returns { field, value } if it matches, null otherwise
+   */
+  #isEqualityFilter(filter: any): { field: string; value: any } | null {
+    if (!filter || typeof filter !== "object") return null;
+
+    const keys = Object.keys(filter);
+    if (keys.length !== 1) return null;
+
+    const field = keys[0]!;
+    const cond: any = filter[field];
+
+    // Support both { field: value } and { field: { $eq: value } }
+    if (cond && typeof cond === "object" && !Array.isArray(cond)) {
+      if ("$eq" in cond) {
+        return { field, value: cond.$eq };
+      }
+      // Not an equality operator
+      return null;
+    }
+
+    // Direct value (scalar equality)
+    return { field, value: cond };
   }
 
-  async rebuildIndexes(_type: string, _fields?: string[]): Promise<void> {
-    throw new Error("Not implemented yet");
+  /**
+   * Execute query using index fast path
+   */
+  async #queryWithIndex(
+    spec: QuerySpec,
+    eqFilter: { field: string; value: any }
+  ): Promise<Document[]> {
+    // Get IDs from index
+    const ids = await this.#indexManager.queryWithIndex(
+      spec.type!,
+      eqFilter.field,
+      eqFilter.value
+    );
+
+    // Optimize: if no sort/projection and we have skip/limit, pre-slice IDs before loading docs
+    let idsToLoad = ids;
+    let needsPagination = false;
+
+    if (!spec.sort && !spec.projection) {
+      const skip = spec.skip ?? 0;
+      const limit = spec.limit;
+
+      if (limit !== undefined) {
+        idsToLoad = ids.slice(skip, skip + limit);
+      } else if (skip > 0) {
+        idsToLoad = ids.slice(skip);
+      }
+    } else {
+      needsPagination = true;
+    }
+
+    // Load documents
+    const docs: Document[] = [];
+    for (const id of idsToLoad) {
+      const doc = await this.get({ type: spec.type!, id });
+      if (doc && matches(doc, spec.filter)) {
+        docs.push(doc);
+      }
+    }
+
+    // If we need sort/projection/pagination, use evaluateQuery
+    if (needsPagination) {
+      return evaluateQuery(docs, {
+        filter: {}, // Already filtered
+        sort: spec.sort,
+        skip: spec.skip,
+        limit: spec.limit,
+        projection: spec.projection,
+      });
+    }
+
+    // Apply projection if needed (pagination already done via ID pre-slice)
+    return spec.projection ? docs.map((d) => project(d, spec.projection)) : docs;
+  }
+
+  /**
+   * Get indexed fields for a type
+   */
+  #getIndexedFields(type: string): string[] {
+    return this.#options.indexes?.[type] ?? [];
+  }
+
+  async ensureIndex(type: string, field: string): Promise<void> {
+    validateName(type, "type");
+    validateName(field, "id"); // Reuse validation pattern
+    await this.#indexManager.ensureIndex(type, field);
+
+    // Track this index for future updates
+    const typeIndexes = this.#options.indexes[type];
+    if (!typeIndexes) {
+      this.#options.indexes[type] = [field];
+    } else if (!typeIndexes.includes(field)) {
+      typeIndexes.push(field);
+    }
+  }
+
+  async rebuildIndexes(type: string, fields?: string[]): Promise<void> {
+    validateName(type, "type");
+    await this.#indexManager.rebuildIndexes(type, fields);
   }
 
   async format(_target?: FormatTarget): Promise<void> {

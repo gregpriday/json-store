@@ -14,6 +14,10 @@ export interface StoreOptions {
   stableKeyOrder?: "alpha" | string[];
   /** Enable file system watching to refresh caches (optional) */
   watch?: boolean;
+  /** Enable equality indexes for fast query execution (default: false) */
+  enableIndexes?: boolean;
+  /** Fields to index per type: { type: [field1, field2] } */
+  indexes?: Record<string, string[]>;
 }
 
 /**

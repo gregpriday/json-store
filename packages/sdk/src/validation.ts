@@ -10,6 +10,34 @@ import type { Key, Document } from "./types.js";
 const VALID_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
 /**
+ * Windows reserved device names (case-insensitive)
+ */
+const WINDOWS_RESERVED_NAMES = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9",
+]);
+
+/**
  * Validate a type or ID string
  * @param value - Value to validate
  * @param label - Label for error messages ("type" or "id")
@@ -33,6 +61,20 @@ export function validateName(value: string, label: "type" | "id"): void {
 
   if (value.includes("..") || value.includes("//")) {
     throw new Error(`${label} cannot contain ".." or "//": "${value}"`);
+  }
+
+  // Windows: reject trailing dots and spaces
+  if (value.endsWith(".") || value.endsWith(" ")) {
+    throw new Error(`${label} cannot end with "." or space: "${value}"`);
+  }
+
+  // Windows: reject reserved device names (case-insensitive)
+  const baseName = value.split(".")[0]!.toLowerCase();
+  if (WINDOWS_RESERVED_NAMES.has(baseName)) {
+    throw new Error(
+      `${label} cannot be a Windows reserved name: "${value}". ` +
+        `Reserved names: CON, PRN, AUX, NUL, COM1-9, LPT1-9`
+    );
   }
 }
 
