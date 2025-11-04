@@ -16,7 +16,10 @@ import type {
   FormatTarget,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
-import { validateDocument } from "./validation.js";
+import { validateDocument, validateName, validateKey } from "./validation.js";
+import { listFiles, atomicWrite } from "./io.js";
+import { evaluateQuery, matches, project } from "./query.js";
+import { stableStringify } from "./format.js";
 
 /**
  * Placeholder store implementation
@@ -49,12 +52,24 @@ class JSONStore implements Store {
     return this.#options;
   }
 
-  async put(key: Key, _doc: Document, _opts?: WriteOptions): Promise<void> {
-    // Full implementation will be added later
-    // For now, invalidate cache on write
+  async put(key: Key, doc: Document, _opts?: WriteOptions): Promise<void> {
+    // Validate key
+    validateKey(key);
+
+    // Validate document matches key
+    validateDocument(key, doc);
+
+    // Get file path
     const filePath = this.getFilePath(key);
+
+    // Serialize document with stable key ordering
+    const content = stableStringify(doc, this.#options.indent, this.#options.stableKeyOrder);
+
+    // Write atomically
+    await atomicWrite(filePath, content);
+
+    // Invalidate cache
     this.#cache.delete(filePath);
-    throw new Error("Not implemented yet");
   }
 
   async get(key: Key): Promise<Document | null> {
@@ -63,9 +78,18 @@ class JSONStore implements Store {
     // Retry up to 3 times if file changes during read (TOCTOU guard)
     for (let attempt = 0; attempt < 3; attempt++) {
       // Check if file exists and get initial stats
-      const st1 = await fs.stat(filePath).catch(() => null);
-      if (!st1 || !st1.isFile()) {
-        return null;
+      let st1;
+      try {
+        st1 = await fs.stat(filePath);
+        if (!st1.isFile()) {
+          return null;
+        }
+      } catch (err: any) {
+        // Only treat ENOENT as "not found", surface other errors
+        if (err.code === "ENOENT" || err.code === "ENOTDIR") {
+          return null;
+        }
+        throw err;
       }
 
       // Try cache first (with metadata validation)
@@ -103,8 +127,19 @@ class JSONStore implements Store {
 
       // TOCTOU guard: re-check stats after reading
       // If file changed during read, retry (unless this is last attempt)
-      const st2 = await fs.stat(filePath).catch(() => null);
-      if (st2 && st2.mtimeMs === st1.mtimeMs && st2.size === st1.size) {
+      let st2;
+      try {
+        st2 = await fs.stat(filePath);
+      } catch (err: any) {
+        // File may have been deleted during read
+        if (err.code === "ENOENT") {
+          return null;
+        }
+        // Other errors should be surfaced
+        throw err;
+      }
+
+      if (st2.mtimeMs === st1.mtimeMs && st2.size === st1.size) {
         // Stats match - safe to cache and return
         this.#cache.set(filePath, doc, st2);
         return doc;
@@ -130,12 +165,166 @@ class JSONStore implements Store {
     throw new Error("Not implemented yet");
   }
 
-  async list(_type: string): Promise<string[]> {
-    throw new Error("Not implemented yet");
+  async list(type: string): Promise<string[]> {
+    // Validate type name
+    validateName(type, "type");
+
+    // Get directory path for this type
+    const typePath = path.join(this.#options.root, type);
+
+    // List all .json files in the directory
+    const files = await listFiles(typePath, ".json");
+
+    // Strip .json extension and return sorted IDs
+    return files.map((file) => file.slice(0, -5)).sort();
   }
 
-  async query(_query: QuerySpec): Promise<Document[]> {
-    throw new Error("Not implemented yet");
+  async query(spec: QuerySpec): Promise<Document[]> {
+    const startTime = process.env.JSONSTORE_DEBUG ? performance.now() : 0;
+
+    // Validate input
+    if (!spec.filter || typeof spec.filter !== "object") {
+      throw new Error("query() requires a filter object");
+    }
+
+    if (spec.skip !== undefined && (typeof spec.skip !== "number" || spec.skip < 0)) {
+      throw new Error("skip must be a non-negative number");
+    }
+
+    if (spec.limit !== undefined && (typeof spec.limit !== "number" || spec.limit <= 0)) {
+      throw new Error("limit must be a positive number");
+    }
+
+    // Validate type if provided
+    if (spec.type) {
+      validateName(spec.type, "type");
+    }
+
+    // Check for fast path: single type, simple ID-based filter, no sort/projection
+    let usedFastPath = false;
+    if (
+      spec.type &&
+      !spec.sort &&
+      !spec.projection &&
+      this.canUseFastPath(spec.filter)
+    ) {
+      const ids = this.extractIdsFromFilter(spec.filter);
+      if (ids) {
+        usedFastPath = true;
+        const docs: Document[] = [];
+
+        for (const id of ids) {
+          const doc = await this.get({ type: spec.type, id });
+          if (doc && matches(doc, spec.filter)) {
+            docs.push(doc);
+          }
+        }
+
+        // Sort by ID for stable ordering
+        docs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+        // Apply pagination
+        const skip = spec.skip ?? 0;
+        const result = spec.limit !== undefined ? docs.slice(skip, skip + spec.limit) : docs.slice(skip);
+
+        if (process.env.JSONSTORE_DEBUG) {
+          const duration = performance.now() - startTime;
+          console.error(
+            `[JSONSTORE_DEBUG] query: ${result.length} results, ${duration.toFixed(2)}ms, fastPath=true, type=${spec.type}`
+          );
+        }
+
+        return result;
+      }
+    }
+
+    // General path: evaluate query with full scan
+    let results: Document[];
+
+    if (!spec.sort) {
+      // No sort: can use streaming with early termination
+      const matches: Document[] = [];
+      const skip = spec.skip ?? 0;
+      const limit = spec.limit;
+      let skipped = 0;
+      let taken = 0;
+
+      for await (const doc of this.scan(spec)) {
+        if (this.matchesFilter(doc, spec.filter)) {
+          if (skipped < skip) {
+            skipped++;
+          } else if (limit === undefined || taken < limit) {
+            matches.push(doc);
+            taken++;
+            if (limit !== undefined && taken >= limit) {
+              break;
+            }
+          }
+        }
+      }
+
+      // Apply projection if needed
+      results = spec.projection ? matches.map((d) => project(d, spec.projection)) : matches;
+    } else {
+      // With sort: must materialize all matches
+      const allDocs: Document[] = [];
+      for await (const doc of this.scan(spec)) {
+        allDocs.push(doc);
+      }
+
+      // Use evaluateQuery for full filter+sort+paginate+project
+      results = evaluateQuery(allDocs, spec);
+    }
+
+    if (process.env.JSONSTORE_DEBUG) {
+      const duration = performance.now() - startTime;
+      console.error(
+        `[JSONSTORE_DEBUG] query: ${results.length} results, ${duration.toFixed(2)}ms, fastPath=false, type=${spec.type ?? "all"}, sort=${!!spec.sort}`
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * Check if a filter can use the fast path (ID-only filter)
+   */
+  private canUseFastPath(filter: any): boolean {
+    // Fast path only for simple id filters: { id: { $eq: "x" } } or { id: { $in: [...] } }
+    if (!filter || typeof filter !== "object") return false;
+
+    const keys = Object.keys(filter);
+    if (keys.length !== 1 || keys[0] !== "id") return false;
+
+    const idFilter = filter.id;
+    if (!idFilter || typeof idFilter !== "object") return false;
+
+    const ops = Object.keys(idFilter);
+    return ops.length === 1 && (ops[0] === "$eq" || ops[0] === "$in");
+  }
+
+  /**
+   * Extract IDs from a fast-path filter
+   */
+  private extractIdsFromFilter(filter: any): string[] | null {
+    if (!filter?.id) return null;
+
+    const idFilter = filter.id;
+    if (idFilter.$eq !== undefined) {
+      return [String(idFilter.$eq)];
+    }
+    if (Array.isArray(idFilter.$in)) {
+      return Array.from(new Set(idFilter.$in.map(String)));
+    }
+
+    return null;
+  }
+
+  /**
+   * Test if document matches filter (wrapper for query.matches)
+   */
+  private matchesFilter(doc: Document, filter: any): boolean {
+    return matches(doc, filter);
   }
 
   async ensureIndex(_type: string, _field: string): Promise<void> {
@@ -157,6 +346,61 @@ class JSONStore implements Store {
   async close(): Promise<void> {
     // Cleanup resources (file watchers, cache, etc.)
     this.#cache.clear();
+  }
+
+  /**
+   * List all types (directories) in the store
+   * @returns Array of type names
+   */
+  private async listTypes(): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(this.#options.root, { withFileTypes: true });
+
+      // Filter to directories only, exclude _meta and hidden directories
+      const types = entries
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
+        .map((entry) => entry.name)
+        .filter((name) => {
+          // Validate each type name
+          try {
+            validateName(name, "type");
+            return true;
+          } catch {
+            return false;
+          }
+        });
+
+      return types.sort();
+    } catch (err: any) {
+      // If root doesn't exist yet, return empty array
+      if (err.code === "ENOENT") {
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Scan documents matching a query spec
+   * @param spec - Query specification
+   * @yields Documents from disk/cache
+   */
+  private async *scan(spec: QuerySpec): AsyncIterable<Document> {
+    // Determine which types to scan
+    const types = spec.type ? [spec.type] : await this.listTypes();
+
+    // Scan each type
+    for (const type of types) {
+      const ids = await this.list(type);
+
+      // Read each document
+      for (const id of ids) {
+        const doc = await this.get({ type, id });
+        if (doc) {
+          yield doc;
+        }
+      }
+    }
   }
 
   /**
@@ -190,18 +434,22 @@ class JSONStore implements Store {
 
     // Build path: root/type/id.json
     const filePath = path.join(this.#options.root, key.type, `${key.id}.json`);
-    // Normalize to absolute path with posix separators for cache key consistency
-    const resolvedPath = path.resolve(filePath).replace(/\\/g, "/");
+    // Normalize to absolute path
+    const resolvedPath = path.resolve(filePath);
 
-    // Double-check: ensure resolved path is still under root
-    const normalizedRoot = this.#options.root.replace(/\\/g, "/");
-    if (!resolvedPath.startsWith(normalizedRoot + "/")) {
+    // Double-check: ensure resolved path is still under root using path.relative
+    // This works correctly regardless of whether root has trailing separator
+    const relativePath = path.relative(this.#options.root, resolvedPath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
       throw new Error(
-        `Path traversal detected: resolved path "${resolvedPath}" is outside root "${normalizedRoot}"`
+        `Path traversal detected: resolved path "${resolvedPath}" is outside root "${this.#options.root}"`
       );
     }
 
-    return resolvedPath;
+    // Normalize to posix separators for cache key consistency
+    const normalizedPath = resolvedPath.replace(/\\/g, "/");
+
+    return normalizedPath;
   }
 }
 
