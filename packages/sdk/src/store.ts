@@ -399,7 +399,8 @@ class JSONStore implements Store {
     // Build canonical options from store settings
     const canonicalOpts: CanonicalOptions = {
       indent: this.#options.indent,
-      stableKeyOrder: this.#options.stableKeyOrder === "alpha" ? true : this.#options.stableKeyOrder,
+      stableKeyOrder:
+        this.#options.stableKeyOrder === "alpha" ? true : this.#options.stableKeyOrder,
       eol: "LF",
       trailingNewline: true,
     };
@@ -521,7 +522,8 @@ class JSONStore implements Store {
       const canonical = canonicalize(doc, canonicalOpts);
 
       // Check if formatting would change anything (byte-stable check)
-      if (normalizedCurrent === canonical) {
+      // Compare against original content to ensure line endings are normalized
+      if (current === canonical) {
         // Already canonical - no-op
         if (process.env.JSONSTORE_DEBUG) {
           console.error(`[JSONSTORE_DEBUG] format: ${filePath} already canonical`);
@@ -621,7 +623,9 @@ class JSONStore implements Store {
       errors.push({ file: typePath, error: errorMsg });
 
       if (process.env.JSONSTORE_DEBUG) {
-        console.warn(`[JSONSTORE_DEBUG] format: failed to list documents in ${typePath}: ${errorMsg}`);
+        console.warn(
+          `[JSONSTORE_DEBUG] format: failed to list documents in ${typePath}: ${errorMsg}`
+        );
       }
 
       if (failFast) {

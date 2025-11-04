@@ -308,9 +308,7 @@ describe("Format Operation", () => {
       await writeFile(join(testDir, "task", "bad.json"), "{invalid json", "utf-8");
 
       // Format with failFast should throw
-      await expect(store.format({ type: "task" }, { failFast: true })).rejects.toThrow(
-        /format/i
-      );
+      await expect(store.format({ type: "task" }, { failFast: true })).rejects.toThrow(/format/i);
 
       await store.close();
     });

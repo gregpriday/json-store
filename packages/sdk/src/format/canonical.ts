@@ -118,7 +118,9 @@ export function canonicalize(input: unknown, options: CanonicalOptions): string 
  * @param raw - Raw string to parse
  * @returns Parsed object or error details
  */
-export function safeParseJson(raw: string): { success: true; data: unknown } | { success: false; error: string } {
+export function safeParseJson(
+  raw: string
+): { success: true; data: unknown } | { success: false; error: string } {
   try {
     const data = JSON.parse(raw);
     return { success: true, data };
