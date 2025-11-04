@@ -236,8 +236,21 @@ export class IndexManager {
     const mutex = this.#getMutex(type, field);
     const result = await mutex.withLock(async () => {
       const readStart = performance.now();
-      const index = await this.#readIndex(type, field);
-      metrics.recordReadTime(type, field, performance.now() - readStart);
+      let index: IndexData;
+
+      try {
+        index = await this.#readIndex(type, field);
+        metrics.recordReadTime(type, field, performance.now() - readStart);
+      } catch (err: any) {
+        // If index file is missing or corrupted, degrade gracefully to empty result
+        // This handles concurrent removeIndex() or file corruption between hasIndex() check and read
+        logger.debug("index.read.fallback", {
+          type,
+          field,
+          details: { error: err.message },
+        });
+        return [];
+      }
 
       const keys = this.#serializeValue(value);
 

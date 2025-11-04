@@ -49,7 +49,10 @@ describe("IndexManager", () => {
 
       // Verify index file exists
       const indexPath = path.join(TEST_ROOT, "task", "_indexes", "status.json");
-      const exists = await fs.access(indexPath).then(() => true).catch(() => false);
+      const exists = await fs
+        .access(indexPath)
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(true);
 
       // Verify index content
@@ -125,9 +128,7 @@ describe("IndexManager", () => {
       const typeDir = path.join(TEST_ROOT, "task");
       await fs.mkdir(typeDir, { recursive: true });
 
-      const docs: Document[] = [
-        { type: "task", id: "001", tags: ["bug", "bug", "urgent"] },
-      ];
+      const docs: Document[] = [{ type: "task", id: "001", tags: ["bug", "bug", "urgent"] }];
 
       for (const doc of docs) {
         await fs.writeFile(
@@ -210,20 +211,17 @@ describe("IndexManager", () => {
       );
       let index = JSON.parse(content);
       expect(index).toEqual({
-        "__num__42": ["001", "003"],
-        "__num__100": ["002"],
+        __num__42: ["001", "003"],
+        __num__100: ["002"],
       });
 
       // Test boolean indexing
       await indexManager.ensureIndex("item", "active");
-      content = await fs.readFile(
-        path.join(TEST_ROOT, "item", "_indexes", "active.json"),
-        "utf-8"
-      );
+      content = await fs.readFile(path.join(TEST_ROOT, "item", "_indexes", "active.json"), "utf-8");
       index = JSON.parse(content);
       expect(index).toEqual({
-        "__bool__true": ["001", "003"],
-        "__bool__false": ["002"],
+        __bool__true: ["001", "003"],
+        __bool__false: ["002"],
       });
 
       // Test null indexing
@@ -234,7 +232,7 @@ describe("IndexManager", () => {
       );
       index = JSON.parse(content);
       expect(index).toEqual({
-        "__null__": ["001", "002"],
+        __null__: ["001", "002"],
       });
     });
 
@@ -294,7 +292,7 @@ describe("IndexManager", () => {
       );
 
       // Should have sorted keys and trailing newline
-      expect(content).toMatch(/^\{\n  "closed":/);
+      expect(content).toMatch(/^\{\n {2}"closed":/);
       expect(content).toMatch(/"open":/);
       expect(content).toMatch(/\n$/);
 
@@ -318,7 +316,10 @@ describe("IndexManager", () => {
 
       // Index file should not exist
       const indexPath = path.join(TEST_ROOT, "task", "_indexes", "status.json");
-      const exists = await fs.access(indexPath).then(() => true).catch(() => false);
+      const exists = await fs
+        .access(indexPath)
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(false);
     });
 
@@ -420,9 +421,7 @@ describe("IndexManager", () => {
       const typeDir = path.join(TEST_ROOT, "task");
       await fs.mkdir(typeDir, { recursive: true });
 
-      const docs: Document[] = [
-        { type: "task", id: "001", tags: ["urgent", "bug"] },
-      ];
+      const docs: Document[] = [{ type: "task", id: "001", tags: ["urgent", "bug"] }];
 
       for (const doc of docs) {
         await fs.writeFile(
@@ -434,13 +433,7 @@ describe("IndexManager", () => {
       await indexManager.ensureIndex("task", "tags");
 
       // Change array: remove "urgent", add "feature"
-      await indexManager.updateIndex(
-        "task",
-        "tags",
-        "001",
-        ["urgent", "bug"],
-        ["bug", "feature"]
-      );
+      await indexManager.updateIndex("task", "tags", "001", ["urgent", "bug"], ["bug", "feature"]);
 
       const content = await fs.readFile(
         path.join(TEST_ROOT, "task", "_indexes", "tags.json"),
@@ -593,10 +586,7 @@ describe("IndexManager", () => {
       await indexManager.ensureIndex("task", "priority");
 
       // Corrupt one index
-      await fs.writeFile(
-        path.join(TEST_ROOT, "task", "_indexes", "status.json"),
-        "{ invalid json"
-      );
+      await fs.writeFile(path.join(TEST_ROOT, "task", "_indexes", "status.json"), "{ invalid json");
 
       // Rebuild should fix it
       await indexManager.rebuildIndexes("task");
@@ -720,9 +710,7 @@ describe("IndexManager", () => {
       // Concurrent updates
       const updates = [];
       for (let i = 2; i <= 50; i++) {
-        updates.push(
-          indexManager.updateIndex("task", "status", `00${i}`, undefined, "open")
-        );
+        updates.push(indexManager.updateIndex("task", "status", `00${i}`, undefined, "open"));
       }
 
       await Promise.all(updates);

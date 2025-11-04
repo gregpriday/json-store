@@ -42,7 +42,10 @@ describe("Index Integration", () => {
 
       // Index shouldn't exist yet
       const indexPath = path.join(TEST_ROOT, "task", "_indexes", "status.json");
-      const exists = await fs.access(indexPath).then(() => true).catch(() => false);
+      const exists = await fs
+        .access(indexPath)
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(false);
 
       // Now create index and verify it works
@@ -150,20 +153,12 @@ describe("Index Integration", () => {
 
       // Results should be identical
       expect(indexResults).toHaveLength(scanResults.length);
-      expect(indexResults.map((d) => d.id).sort()).toEqual(
-        scanResults.map((d) => d.id).sort()
-      );
+      expect(indexResults.map((d) => d.id).sort()).toEqual(scanResults.map((d) => d.id).sort());
     });
 
     it("should support scalar equality filters", async () => {
-      await store.put(
-        { type: "task", id: "001" },
-        { type: "task", id: "001", status: "open" }
-      );
-      await store.put(
-        { type: "task", id: "002" },
-        { type: "task", id: "002", status: "closed" }
-      );
+      await store.put({ type: "task", id: "001" }, { type: "task", id: "001", status: "open" });
+      await store.put({ type: "task", id: "002" }, { type: "task", id: "002", status: "closed" });
 
       await store.ensureIndex("task", "status");
 
@@ -178,14 +173,8 @@ describe("Index Integration", () => {
     });
 
     it("should support $eq operator", async () => {
-      await store.put(
-        { type: "task", id: "001" },
-        { type: "task", id: "001", status: "open" }
-      );
-      await store.put(
-        { type: "task", id: "002" },
-        { type: "task", id: "002", status: "closed" }
-      );
+      await store.put({ type: "task", id: "001" }, { type: "task", id: "001", status: "open" });
+      await store.put({ type: "task", id: "002" }, { type: "task", id: "002", status: "closed" });
 
       await store.ensureIndex("task", "status");
 
@@ -273,10 +262,7 @@ describe("Index Integration", () => {
         { type: "task", id: "002" },
         { type: "task", id: "002", tags: ["feature", "urgent"] }
       );
-      await store.put(
-        { type: "task", id: "003" },
-        { type: "task", id: "003", tags: ["bug"] }
-      );
+      await store.put({ type: "task", id: "003" }, { type: "task", id: "003", tags: ["bug"] });
 
       await store.ensureIndex("task", "tags");
 
@@ -315,14 +301,8 @@ describe("Index Integration", () => {
     });
 
     it("should fall back to scan when index doesn't exist", async () => {
-      await store.put(
-        { type: "task", id: "001" },
-        { type: "task", id: "001", status: "open" }
-      );
-      await store.put(
-        { type: "task", id: "002" },
-        { type: "task", id: "002", status: "closed" }
-      );
+      await store.put({ type: "task", id: "001" }, { type: "task", id: "001", status: "open" });
+      await store.put({ type: "task", id: "002" }, { type: "task", id: "002", status: "closed" });
 
       // Query without building index - should use full scan
       const results = await store.query({
@@ -389,60 +369,66 @@ describe("Index Integration", () => {
       return performance.now() - start;
     };
 
-    it("should be significantly faster with index on large dataset", { timeout: 30000 }, async () => {
-      // Create large dataset (1000 documents)
-      const docs: Document[] = [];
-      for (let i = 1; i <= 1000; i++) {
-        const status = i % 3 === 0 ? "closed" : i % 3 === 1 ? "open" : "pending";
-        docs.push({
-          type: "task",
-          id: `${i}`.padStart(4, "0"),
-          status,
-          priority: (i % 5) + 1,
-          title: `Task ${i}`,
-        });
+    it(
+      "should be significantly faster with index on large dataset",
+      { timeout: 30000 },
+      async () => {
+        // Create large dataset (1000 documents)
+        const docs: Document[] = [];
+        for (let i = 1; i <= 1000; i++) {
+          const status = i % 3 === 0 ? "closed" : i % 3 === 1 ? "open" : "pending";
+          docs.push({
+            type: "task",
+            id: `${i}`.padStart(4, "0"),
+            status,
+            priority: (i % 5) + 1,
+            title: `Task ${i}`,
+          });
+        }
+
+        // Insert documents
+        for (const doc of docs) {
+          await store.put({ type: "task", id: doc.id }, doc);
+        }
+
+        // Measure scan time (without index)
+        const scanTimes: number[] = [];
+        for (let i = 0; i < 5; i++) {
+          const time = await measureQuery(store, { status: { $eq: "open" } });
+          scanTimes.push(time);
+        }
+        const medianScanTime = scanTimes.sort((a, b) => a - b)[Math.floor(scanTimes.length / 2)]!;
+
+        // Build index
+        await store.ensureIndex("task", "status");
+
+        // Measure index time
+        const indexTimes: number[] = [];
+        for (let i = 0; i < 5; i++) {
+          const time = await measureQuery(store, { status: { $eq: "open" } });
+          indexTimes.push(time);
+        }
+        const medianIndexTime = indexTimes.sort((a, b) => a - b)[
+          Math.floor(indexTimes.length / 2)
+        ]!;
+
+        // Index should be at least 3× faster (conservative for CI environments)
+        // In practice, typically 10-100× faster
+        const speedup = medianScanTime / medianIndexTime;
+
+        console.log(`Scan median: ${medianScanTime.toFixed(2)}ms`);
+        console.log(`Index median: ${medianIndexTime.toFixed(2)}ms`);
+        console.log(`Speedup: ${speedup.toFixed(1)}×`);
+
+        // Lenient assertion for CI - just verify index is faster
+        expect(medianIndexTime).toBeLessThan(medianScanTime);
+
+        // Stricter assertion (may be flaky on slow CI)
+        if (process.env.CI !== "true") {
+          expect(speedup).toBeGreaterThan(3);
+        }
       }
-
-      // Insert documents
-      for (const doc of docs) {
-        await store.put({ type: "task", id: doc.id }, doc);
-      }
-
-      // Measure scan time (without index)
-      const scanTimes: number[] = [];
-      for (let i = 0; i < 5; i++) {
-        const time = await measureQuery(store, { status: { $eq: "open" } });
-        scanTimes.push(time);
-      }
-      const medianScanTime = scanTimes.sort((a, b) => a - b)[Math.floor(scanTimes.length / 2)]!;
-
-      // Build index
-      await store.ensureIndex("task", "status");
-
-      // Measure index time
-      const indexTimes: number[] = [];
-      for (let i = 0; i < 5; i++) {
-        const time = await measureQuery(store, { status: { $eq: "open" } });
-        indexTimes.push(time);
-      }
-      const medianIndexTime = indexTimes.sort((a, b) => a - b)[Math.floor(indexTimes.length / 2)]!;
-
-      // Index should be at least 3× faster (conservative for CI environments)
-      // In practice, typically 10-100× faster
-      const speedup = medianScanTime / medianIndexTime;
-
-      console.log(`Scan median: ${medianScanTime.toFixed(2)}ms`);
-      console.log(`Index median: ${medianIndexTime.toFixed(2)}ms`);
-      console.log(`Speedup: ${speedup.toFixed(1)}×`);
-
-      // Lenient assertion for CI - just verify index is faster
-      expect(medianIndexTime).toBeLessThan(medianScanTime);
-
-      // Stricter assertion (may be flaky on slow CI)
-      if (process.env.CI !== "true") {
-        expect(speedup).toBeGreaterThan(3);
-      }
-    });
+    );
 
     it("should handle p95 query latency target on 1000 docs", { timeout: 30000 }, async () => {
       // Create dataset
@@ -514,10 +500,7 @@ describe("Index Integration", () => {
 
   describe("Edge cases", () => {
     it("should handle empty result sets", async () => {
-      await store.put(
-        { type: "task", id: "001" },
-        { type: "task", id: "001", status: "open" }
-      );
+      await store.put({ type: "task", id: "001" }, { type: "task", id: "001", status: "open" });
 
       await store.ensureIndex("task", "status");
 

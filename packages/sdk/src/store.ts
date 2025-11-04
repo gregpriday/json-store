@@ -276,11 +276,7 @@ class JSONStore implements Store {
     }
 
     // Check for index fast path: equality filter on indexed field
-    if (
-      this.#options.enableIndexes &&
-      spec.type &&
-      this.#isEqualityFilter(spec.filter)
-    ) {
+    if (this.#options.enableIndexes && spec.type && this.#isEqualityFilter(spec.filter)) {
       const eqFilter = this.#isEqualityFilter(spec.filter);
       if (eqFilter && (await this.#indexManager.hasIndex(spec.type, eqFilter.field))) {
         const result = await this.#queryWithIndex(spec, eqFilter);
@@ -459,11 +455,7 @@ class JSONStore implements Store {
     eqFilter: { field: string; value: any }
   ): Promise<Document[]> {
     // Get IDs from index
-    const ids = await this.#indexManager.queryWithIndex(
-      spec.type!,
-      eqFilter.field,
-      eqFilter.value
-    );
+    const ids = await this.#indexManager.queryWithIndex(spec.type!, eqFilter.field, eqFilter.value);
 
     // Optimize: if no sort/projection and we have skip/limit, pre-slice IDs before loading docs
     let idsToLoad = ids;
