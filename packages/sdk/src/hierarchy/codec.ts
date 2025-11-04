@@ -133,7 +133,10 @@ export function parseSortKey(sortKey: string): { type: string; slug: string; id:
  * @param slug - Document's slug
  * @returns Computed materialized path
  */
-export function computePath(parentPath: MaterializedPath | undefined, slug: Slug): MaterializedPath {
+export function computePath(
+  parentPath: MaterializedPath | undefined,
+  slug: Slug
+): MaterializedPath {
   if (!parentPath || parentPath === "/") {
     return `/${slug}` as MaterializedPath;
   }

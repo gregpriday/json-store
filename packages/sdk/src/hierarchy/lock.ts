@@ -33,6 +33,7 @@ export class FileLock {
     // Ensure parent directory exists
     await fs.mkdir(path.dirname(this.#lockPath), { recursive: true });
 
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         // Try to open file exclusively (fails if already exists)

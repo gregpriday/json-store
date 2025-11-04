@@ -125,19 +125,13 @@ export class IndexTxn {
       throw new Error("No transaction in progress");
     }
 
-    try {
-      // Commit via WAL - this is atomic per file but not across all files
-      // If we crash during commit, WAL recovery will replay the remaining renames
-      await this.#wal.commit(this.#txnId, this.#manifest);
+    // Commit via WAL - this is atomic per file but not across all files
+    // If we crash during commit, WAL recovery will replay the remaining renames
+    await this.#wal.commit(this.#txnId, this.#manifest);
 
-      // Clear state
-      this.#txnId = undefined;
-      this.#manifest = undefined;
-    } catch (err) {
-      // Commit failed - leave manifest in place for recovery
-      // Don't clear state so rollback can clean up
-      throw err;
-    }
+    // Clear state
+    this.#txnId = undefined;
+    this.#manifest = undefined;
   }
 
   /**

@@ -61,10 +61,17 @@ export class ByPathAdapter implements IndexAdapter {
     }
 
     // If path changed or document deleted, remove old index entry
+    // Note: Deletion happens outside WAL since we only need to remove, not atomically update
     if (oldPath && oldPath !== newPath) {
-      // Stage deletion by not writing anything (will be cleaned up in commit)
-      // For now, we'll handle deletion synchronously in rollback
-      // TODO: Proper deletion staging
+      const oldIndexPath = this.#getIndexPath(oldPath);
+      try {
+        await fs.unlink(oldIndexPath);
+      } catch (err: any) {
+        // Ignore if doesn't exist
+        if (err.code !== "ENOENT") {
+          throw err;
+        }
+      }
     }
 
     return operations;
@@ -143,7 +150,9 @@ export class ByPathAdapter implements IndexAdapter {
    * Rebuild the entire by-path index from documents
    * @param docs - All documents with paths
    */
-  async rebuild(docs: Array<{ id: string; type: string; path?: MaterializedPath }>): Promise<number> {
+  async rebuild(
+    docs: Array<{ id: string; type: string; path?: MaterializedPath }>
+  ): Promise<number> {
     let rebuilt = 0;
 
     // Clear existing index

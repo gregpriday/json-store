@@ -51,7 +51,13 @@ export {
 } from "./validation.js";
 
 // Re-export hierarchy utilities
-export { normalizeSlug, encodePath, decodePath, computePath, childrenSortKey } from "./hierarchy/codec.js";
+export {
+  normalizeSlug,
+  encodePath,
+  decodePath,
+  computePath,
+  childrenSortKey,
+} from "./hierarchy/codec.js";
 
 // Re-export I/O operations
 export { atomicWrite, readDocument, removeDocument, ensureDirectory, listFiles } from "./io.js";

@@ -1364,11 +1364,12 @@ class JSONStore implements Store {
     // Get old document for hierarchy updates
     const oldDoc = await this.get(key);
 
-    // Perform hierarchical indexing via HierarchyManager
-    await this.#hierarchyManager.putHierarchical(key, doc, parentKey, slug, oldDoc ?? undefined);
-
-    // Perform regular put operation
+    // Perform regular put operation FIRST to ensure document exists before index
     await this.put(key, doc, opts);
+
+    // Perform hierarchical indexing via HierarchyManager
+    // This happens after document write to ensure index never points to non-existent doc
+    await this.#hierarchyManager.putHierarchical(key, doc, parentKey, slug, oldDoc ?? undefined);
   }
 
   /**

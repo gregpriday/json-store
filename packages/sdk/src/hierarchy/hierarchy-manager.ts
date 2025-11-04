@@ -138,7 +138,6 @@ export class HierarchyManager {
     return await this.#byPathAdapter.rebuild(docsWithPaths);
   }
 
-
   /**
    * Get WAL statistics
    */

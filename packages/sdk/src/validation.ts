@@ -269,7 +269,7 @@ export function validateMaterializedPath(path: string): MaterializedPath {
   }
 
   // Check for path traversal
-  if (normalized.includes("/..") || normalized.includes("./")){
+  if (normalized.includes("/..") || normalized.includes("./")) {
     throw new Error(`Path cannot contain traversal sequences: "${path}"`);
   }
 
@@ -309,8 +309,6 @@ export function validateMaterializedPath(path: string): MaterializedPath {
 export function validatePathDepth(path: MaterializedPath, maxDepth: number = 32): void {
   const depth = path === "/" ? 0 : path.split("/").length - 1;
   if (depth > maxDepth) {
-    throw new Error(
-      `Path depth ${depth} exceeds maximum ${maxDepth}: "${path}"`
-    );
+    throw new Error(`Path depth ${depth} exceeds maximum ${maxDepth}: "${path}"`);
   }
 }
