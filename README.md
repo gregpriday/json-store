@@ -169,70 +169,33 @@ pnpm --filter @jsonstore/sdk test:watch
 pnpm typecheck
 ```
 
+## Documentation
+
+Comprehensive documentation is available:
+
+- **[API Reference](./docs/api-reference.md)** - Complete TypeScript API documentation
+- **[Query Guide](./docs/query-guide.md)** - Mango query language with examples
+- **[MCP Tools](./docs/mcp-tools.md)** - AI agent tool catalog
+- **[Operations Runbook](./docs/operations.md)** - Production operations guide
+- **[Examples](./examples/)** - Runnable code examples
+
 ## Implementation Status
 
-This is the initial scaffolding for JSON Store. The following components are currently in place:
+JSON Store is feature-complete with full CRUD operations, Mango queries, optional indexes, and MCP server support.
 
-### Completed (Stage 1)
+### Completed
 
-- [x] Monorepo structure with pnpm workspaces
-- [x] TypeScript configuration
-- [x] Core type definitions
-- [x] Query engine implementation (format, query, validation)
-- [x] CLI command structure
-- [x] MCP server scaffolding with tool definitions
-- [x] Test framework setup
-
-### Planned Implementation
-
-#### Stage 2 - Core File I/O
-
-- [ ] Atomic file write operations
-- [ ] Document read/write/delete
-- [ ] Directory structure creation
-
-#### Stage 3 - SDK CRUD Operations
-
-- [ ] In-memory document cache
-- [ ] Full CRUD implementation
-- [ ] List operations
-
-#### Stage 4 - Query Engine
-
-- [ ] Full Mango operator support
-- [ ] Sorting and pagination
-- [ ] Projection
-
-#### Stage 5 - CLI Implementation
-
-- [ ] Wire up all commands
-- [ ] File and stdin input
-- [ ] Pretty output formatting
-
-#### Stage 6 - Optional Indexes
-
-- [ ] Sidecar equality indexes
-- [ ] Index maintenance on writes
-- [ ] Fast path for indexed queries
-
-#### Stage 7 - MCP Server
-
-- [ ] Wire up tool implementations
-- [ ] Git commit support
-- [ ] Batch commit coalescing
-
-#### Stage 8 - Frontend
-
-- [ ] Document browsing
-- [ ] Client-side query execution
-- [ ] Caching and manifest support
-
-#### Stage 9 - Documentation
-
-- [ ] API reference
-- [ ] Query language guide
-- [ ] MCP tool catalog
-- [ ] Operations runbook
+- ✅ Core SDK with CRUD operations (put/get/remove/list)
+- ✅ Mango query engine with all operators ($eq, $ne, $in, $nin, $gt, $gte, $lt, $lte, $and, $or, $not, $exists, $type)
+- ✅ Optional equality indexes for fast queries
+- ✅ In-memory document cache with mtime validation
+- ✅ Atomic file operations with TOCTOU guards
+- ✅ Deterministic formatting with stable key ordering
+- ✅ CLI with all commands
+- ✅ MCP server with 6 tools for AI agents
+- ✅ Git integration (optional commits)
+- ✅ Comprehensive test suite
+- ✅ Complete documentation and examples
 
 ## Performance Guidelines
 

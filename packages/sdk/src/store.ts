@@ -34,8 +34,28 @@ import { DocumentReadError, FormatError, DocumentNotFoundError } from "./errors.
 const execFile = promisify(execFileCallback);
 
 /**
- * Placeholder store implementation
- * Full implementation will be added in Stage 2-3
+ * JSON Store implementation with Git-backed file storage
+ *
+ * Provides CRUD operations, Mango query support, optional indexes, and Git integration.
+ * All documents are stored as prettified JSON files with deterministic formatting for clean diffs.
+ *
+ * @example
+ * ```typescript
+ * const store = openStore({ root: './data' });
+ *
+ * // Store a document
+ * await store.put(
+ *   { type: 'task', id: 'task-1' },
+ *   { type: 'task', id: 'task-1', title: 'Fix bug', status: 'open' }
+ * );
+ *
+ * // Query documents
+ * const results = await store.query({
+ *   type: 'task',
+ *   filter: { status: { $eq: 'open' } },
+ *   sort: { priority: -1 }
+ * });
+ * ```
  */
 class JSONStore implements Store {
   #options: Required<StoreOptions>;
@@ -91,6 +111,26 @@ class JSONStore implements Store {
     return this.#options;
   }
 
+  /**
+   * Store or update a document
+   *
+   * Atomically writes the document to disk with deterministic formatting.
+   * Invalidates cache entry and updates indexes if enabled.
+   *
+   * @param key - Document identifier (type and id)
+   * @param doc - Document data (must include matching type and id fields)
+   * @param opts - Optional write options (git commit message)
+   * @throws {ValidationError} If key or document is invalid
+   * @throws {DocumentWriteError} If write operation fails
+   *
+   * @example
+   * ```typescript
+   * await store.put(
+   *   { type: 'task', id: 'task-1' },
+   *   { type: 'task', id: 'task-1', title: 'Fix bug', status: 'open' }
+   * );
+   * ```
+   */
   async put(key: Key, doc: Document, opts?: WriteOptions): Promise<void> {
     // Validate key and document
     validateKey(key);
@@ -153,6 +193,25 @@ class JSONStore implements Store {
     }
   }
 
+  /**
+   * Retrieve a document by key
+   *
+   * Returns the document from cache if available and valid, otherwise reads from disk.
+   * Implements TOCTOU (Time-of-check to time-of-use) guard by re-checking file stats after read.
+   *
+   * @param key - Document identifier (type and id)
+   * @returns Document if found, null if not found
+   * @throws {ValidationError} If key is invalid
+   * @throws {DocumentReadError} If read operation fails (excluding ENOENT)
+   *
+   * @example
+   * ```typescript
+   * const doc = await store.get({ type: 'task', id: 'task-1' });
+   * if (doc) {
+   *   console.log(doc.title);
+   * }
+   * ```
+   */
   async get(key: Key): Promise<Document | null> {
     validateKey(key);
     const filePath = this.getFilePath(key);
@@ -229,6 +288,21 @@ class JSONStore implements Store {
     return null;
   }
 
+  /**
+   * Remove a document
+   *
+   * Deletes the document file and updates indexes if enabled.
+   * Operation is idempotent - no error if document doesn't exist.
+   *
+   * @param key - Document identifier (type and id)
+   * @param opts - Optional remove options (git commit message)
+   * @throws {ValidationError} If key is invalid
+   *
+   * @example
+   * ```typescript
+   * await store.remove({ type: 'task', id: 'task-1' });
+   * ```
+   */
   async remove(key: Key, opts?: RemoveOptions): Promise<void> {
     validateKey(key);
     const filePath = this.getFilePath(key);
@@ -268,6 +342,21 @@ class JSONStore implements Store {
     }
   }
 
+  /**
+   * List all document IDs for a given type
+   *
+   * Returns a sorted array of document IDs. Does not load document content.
+   *
+   * @param type - Entity type to list
+   * @returns Sorted array of document IDs
+   * @throws {ValidationError} If type name is invalid
+   *
+   * @example
+   * ```typescript
+   * const ids = await store.list('task');
+   * console.log(`Found ${ids.length} tasks`);
+   * ```
+   */
   async list(type: string): Promise<string[]> {
     validateName(type, "type");
     const typeDir = path.join(this.#rootPath, type);
@@ -282,6 +371,32 @@ class JSONStore implements Store {
     return files.map((f) => path.basename(f, ".json")).sort();
   }
 
+  /**
+   * Execute a Mango query to find matching documents
+   *
+   * Supports filtering, sorting, projection, and pagination. Uses indexes when available
+   * and implements several fast paths for common query patterns.
+   *
+   * @param spec - Query specification with filter, optional sort/projection/pagination
+   * @returns Array of matching documents (may be empty)
+   * @throws {Error} If query specification is invalid
+   *
+   * @example
+   * ```typescript
+   * // Find open high-priority tasks
+   * const results = await store.query({
+   *   type: 'task',
+   *   filter: {
+   *     $and: [
+   *       { status: { $eq: 'open' } },
+   *       { priority: { $gte: 8 } }
+   *     ]
+   *   },
+   *   sort: { priority: -1, createdAt: -1 },
+   *   limit: 10
+   * });
+   * ```
+   */
   async query(spec: QuerySpec): Promise<Document[]> {
     const startTime = process.env.JSONSTORE_DEBUG ? performance.now() : 0;
 
@@ -1258,9 +1373,38 @@ class JSONStore implements Store {
 }
 
 /**
- * Open a JSON store
+ * Open a JSON Store instance
+ *
+ * Creates a new store instance with the specified configuration.
+ * The store provides CRUD operations, Mango queries, optional indexes, and Git integration.
+ *
  * @param options - Store configuration options
- * @returns Store instance
+ * @param options.root - Root directory for data storage (required)
+ * @param options.indent - JSON indentation spaces (default: 2)
+ * @param options.stableKeyOrder - Key ordering: 'alpha' or array of keys (default: 'alpha')
+ * @param options.watch - Enable file watching for cache invalidation (default: false)
+ * @param options.enableIndexes - Enable equality indexes (default: false)
+ * @param options.indexes - Field indexes per type: { type: [field1, field2] }
+ * @param options.formatConcurrency - Max concurrency for format operations (default: 16, range: 1-64)
+ * @returns Store instance ready for operations
+ *
+ * @example
+ * ```typescript
+ * // Basic store with defaults
+ * const store = openStore({ root: './data' });
+ *
+ * // Store with custom formatting and indexes
+ * const store = openStore({
+ *   root: './data',
+ *   indent: 2,
+ *   stableKeyOrder: 'alpha',
+ *   enableIndexes: true,
+ *   indexes: {
+ *     task: ['status', 'priority'],
+ *     user: ['email']
+ *   }
+ * });
+ * ```
  */
 export function openStore(options: StoreOptions): Store {
   return new JSONStore(options);

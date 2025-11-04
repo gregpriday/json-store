@@ -30,6 +30,16 @@ importers:
         specifier: ^1.2.0
         version: 1.6.1(@types/node@20.19.24)
 
+  examples:
+    dependencies:
+      '@jsonstore/sdk':
+        specifier: workspace:*
+        version: link:../packages/sdk
+    devDependencies:
+      tsx:
+        specifier: ^4.7.0
+        version: 4.20.6
+
   packages/cli:
     dependencies:
       '@jsonstore/sdk':
