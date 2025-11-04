@@ -30,21 +30,21 @@ Opens a JSON Store instance with the specified configuration.
 ### Signature
 
 ```typescript
-function openStore(options: StoreOptions): Store
+function openStore(options: StoreOptions): Store;
 ```
 
 ### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `options` | `StoreOptions` | Yes | Store configuration |
-| `options.root` | `string` | Yes | Root directory for data storage |
-| `options.indent` | `number` | No | JSON indentation spaces (default: 2) |
-| `options.stableKeyOrder` | `'alpha' \| string[]` | No | Key ordering strategy (default: 'alpha') |
-| `options.watch` | `boolean` | No | Enable file watching (default: false) |
-| `options.enableIndexes` | `boolean` | No | Enable equality indexes (default: false) |
-| `options.indexes` | `Record<string, string[]>` | No | Field indexes per type |
-| `options.formatConcurrency` | `number` | No | Max concurrency for format ops (default: 16, range: 1-64) |
+| Parameter                   | Type                       | Required | Description                                               |
+| --------------------------- | -------------------------- | -------- | --------------------------------------------------------- |
+| `options`                   | `StoreOptions`             | Yes      | Store configuration                                       |
+| `options.root`              | `string`                   | Yes      | Root directory for data storage                           |
+| `options.indent`            | `number`                   | No       | JSON indentation spaces (default: 2)                      |
+| `options.stableKeyOrder`    | `'alpha' \| string[]`      | No       | Key ordering strategy (default: 'alpha')                  |
+| `options.watch`             | `boolean`                  | No       | Enable file watching (default: false)                     |
+| `options.enableIndexes`     | `boolean`                  | No       | Enable equality indexes (default: false)                  |
+| `options.indexes`           | `Record<string, string[]>` | No       | Field indexes per type                                    |
+| `options.formatConcurrency` | `number`                   | No       | Max concurrency for format ops (default: 16, range: 1-64) |
 
 ### Returns
 
@@ -53,27 +53,27 @@ function openStore(options: StoreOptions): Store
 ### Example
 
 ```typescript
-import { openStore } from '@jsonstore/sdk';
+import { openStore } from "@jsonstore/sdk";
 
 // Basic store with defaults
-const store = openStore({ root: './data' });
+const store = openStore({ root: "./data" });
 ```
 
 **Advanced configuration:**
 
 ```typescript
-import { openStore } from '@jsonstore/sdk';
+import { openStore } from "@jsonstore/sdk";
 
 // Store with custom configuration
 const storeWithIndexes = openStore({
-  root: './data',
+  root: "./data",
   indent: 2,
-  stableKeyOrder: 'alpha',
+  stableKeyOrder: "alpha",
   enableIndexes: true,
   indexes: {
-    task: ['status', 'priority'],
-    user: ['email']
-  }
+    task: ["status", "priority"],
+    user: ["email"],
+  },
 });
 ```
 
@@ -93,12 +93,12 @@ async put(key: Key, doc: Document, opts?: WriteOptions): Promise<void>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `key` | `Key` | Yes | Document identifier (type and id) |
-| `doc` | `Document` | Yes | Document data (must include matching type and id fields) |
-| `opts` | `WriteOptions` | No | Optional write options |
-| `opts.gitCommit` | `string` | No | Git commit message for this change |
+| Parameter        | Type           | Required | Description                                              |
+| ---------------- | -------------- | -------- | -------------------------------------------------------- |
+| `key`            | `Key`          | Yes      | Document identifier (type and id)                        |
+| `doc`            | `Document`     | Yes      | Document data (must include matching type and id fields) |
+| `opts`           | `WriteOptions` | No       | Optional write options                                   |
+| `opts.gitCommit` | `string`       | No       | Git commit message for this change                       |
 
 #### Returns
 
@@ -122,21 +122,21 @@ async put(key: Key, doc: Document, opts?: WriteOptions): Promise<void>
 ```typescript
 // Basic put
 await store.put(
-  { type: 'task', id: 'task-1' },
+  { type: "task", id: "task-1" },
   {
-    type: 'task',
-    id: 'task-1',
-    title: 'Fix login bug',
-    status: 'open',
-    priority: 8
+    type: "task",
+    id: "task-1",
+    title: "Fix login bug",
+    status: "open",
+    priority: 8,
   }
 );
 
 // Put with git commit
 await store.put(
-  { type: 'task', id: 'task-1' },
-  { type: 'task', id: 'task-1', title: 'Updated task', status: 'closed' },
-  { gitCommit: 'feat(task): close task-1' }
+  { type: "task", id: "task-1" },
+  { type: "task", id: "task-1", title: "Updated task", status: "closed" },
+  { gitCommit: "feat(task): close task-1" }
 );
 ```
 
@@ -152,9 +152,9 @@ async get(key: Key): Promise<Document | null>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `key` | `Key` | Yes | Document identifier (type and id) |
+| Parameter | Type  | Required | Description                       |
+| --------- | ----- | -------- | --------------------------------- |
+| `key`     | `Key` | Yes      | Document identifier (type and id) |
 
 #### Returns
 
@@ -176,13 +176,13 @@ async get(key: Key): Promise<Document | null>
 #### Example
 
 ```typescript
-const doc = await store.get({ type: 'task', id: 'task-1' });
+const doc = await store.get({ type: "task", id: "task-1" });
 
 if (doc) {
   console.log(`Title: ${doc.title}`);
   console.log(`Status: ${doc.status}`);
 } else {
-  console.log('Document not found');
+  console.log("Document not found");
 }
 ```
 
@@ -198,11 +198,11 @@ async remove(key: Key, opts?: RemoveOptions): Promise<void>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `key` | `Key` | Yes | Document identifier (type and id) |
-| `opts` | `RemoveOptions` | No | Optional remove options |
-| `opts.gitCommit` | `string` | No | Git commit message for this change |
+| Parameter        | Type            | Required | Description                        |
+| ---------------- | --------------- | -------- | ---------------------------------- |
+| `key`            | `Key`           | Yes      | Document identifier (type and id)  |
+| `opts`           | `RemoveOptions` | No       | Optional remove options            |
+| `opts.gitCommit` | `string`        | No       | Git commit message for this change |
 
 #### Returns
 
@@ -224,12 +224,12 @@ async remove(key: Key, opts?: RemoveOptions): Promise<void>
 
 ```typescript
 // Basic remove
-await store.remove({ type: 'task', id: 'task-1' });
+await store.remove({ type: "task", id: "task-1" });
 
 // Remove with git commit
 await store.remove(
-  { type: 'task', id: 'task-1' },
-  { gitCommit: 'chore(task): remove completed task' }
+  { type: "task", id: "task-1" },
+  { gitCommit: "chore(task): remove completed task" }
 );
 ```
 
@@ -245,9 +245,9 @@ async list(type: string): Promise<string[]>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `type` | `string` | Yes | Entity type to list |
+| Parameter | Type     | Required | Description         |
+| --------- | -------- | -------- | ------------------- |
+| `type`    | `string` | Yes      | Entity type to list |
 
 #### Returns
 
@@ -267,7 +267,7 @@ async list(type: string): Promise<string[]>
 #### Example
 
 ```typescript
-const ids = await store.list('task');
+const ids = await store.list("task");
 console.log(`Found ${ids.length} tasks`);
 
 for (const id of ids) {
@@ -287,15 +287,15 @@ async query(spec: QuerySpec): Promise<Document[]>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `spec` | `QuerySpec` | Yes | Query specification |
-| `spec.type` | `string` | No | Restrict query to specific type |
-| `spec.filter` | `Filter` | Yes | Filter conditions using Mango operators |
-| `spec.projection` | `Projection` | No | Fields to include/exclude |
-| `spec.sort` | `Sort` | No | Sort order for results |
-| `spec.limit` | `number` | No | Maximum number of results |
-| `spec.skip` | `number` | No | Number of results to skip (for pagination) |
+| Parameter         | Type         | Required | Description                                |
+| ----------------- | ------------ | -------- | ------------------------------------------ |
+| `spec`            | `QuerySpec`  | Yes      | Query specification                        |
+| `spec.type`       | `string`     | No       | Restrict query to specific type            |
+| `spec.filter`     | `Filter`     | Yes      | Filter conditions using Mango operators    |
+| `spec.projection` | `Projection` | No       | Fields to include/exclude                  |
+| `spec.sort`       | `Sort`       | No       | Sort order for results                     |
+| `spec.limit`      | `number`     | No       | Maximum number of results                  |
+| `spec.skip`       | `number`     | No       | Number of results to skip (for pagination) |
 
 #### Returns
 
@@ -318,31 +318,28 @@ async query(spec: QuerySpec): Promise<Document[]>
 ```typescript
 // Find open high-priority tasks
 const results = await store.query({
-  type: 'task',
+  type: "task",
   filter: {
-    $and: [
-      { status: { $eq: 'open' } },
-      { priority: { $gte: 8 } }
-    ]
+    $and: [{ status: { $eq: "open" } }, { priority: { $gte: 8 } }],
   },
   sort: { priority: -1, createdAt: -1 },
-  limit: 10
+  limit: 10,
 });
 
 // Query with projection
 const summaries = await store.query({
-  type: 'task',
-  filter: { status: 'open' },
-  projection: { id: 1, title: 1, priority: 1 }
+  type: "task",
+  filter: { status: "open" },
+  projection: { id: 1, title: 1, priority: 1 },
 });
 
 // Paginated query
 const page2 = await store.query({
-  type: 'task',
-  filter: { status: 'open' },
+  type: "task",
+  filter: { status: "open" },
   sort: { createdAt: -1 },
   limit: 20,
-  skip: 20
+  skip: 20,
 });
 ```
 
@@ -358,10 +355,10 @@ async ensureIndex(type: string, field: string): Promise<void>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `type` | `string` | Yes | Entity type to index |
-| `field` | `string` | Yes | Field name to index (supports dot paths) |
+| Parameter | Type     | Required | Description                              |
+| --------- | -------- | -------- | ---------------------------------------- |
+| `type`    | `string` | Yes      | Entity type to index                     |
+| `field`   | `string` | Yes      | Field name to index (supports dot paths) |
 
 #### Returns
 
@@ -383,12 +380,12 @@ async ensureIndex(type: string, field: string): Promise<void>
 
 ```typescript
 // Create index on frequently queried fields
-await store.ensureIndex('task', 'status');
-await store.ensureIndex('task', 'priority');
-await store.ensureIndex('user', 'email');
+await store.ensureIndex("task", "status");
+await store.ensureIndex("task", "priority");
+await store.ensureIndex("user", "email");
 
 // Index on nested field
-await store.ensureIndex('task', 'assignee.id');
+await store.ensureIndex("task", "assignee.id");
 ```
 
 ### stats()
@@ -403,9 +400,9 @@ async stats(type?: string): Promise<StoreStats>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `type` | `string` | No | Entity type to get stats for (all types if omitted) |
+| Parameter | Type     | Required | Description                                         |
+| --------- | -------- | -------- | --------------------------------------------------- |
+| `type`    | `string` | No       | Entity type to get stats for (all types if omitted) |
 
 #### Returns
 
@@ -420,7 +417,7 @@ console.log(`Total documents: ${allStats.count}`);
 console.log(`Total size: ${allStats.bytes} bytes`);
 
 // Stats for specific type
-const taskStats = await store.stats('task');
+const taskStats = await store.stats("task");
 console.log(`Tasks: ${taskStats.count}`);
 ```
 
@@ -436,12 +433,12 @@ async format(target?: FormatTarget, opts?: FormatOptions): Promise<number>
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `target` | `FormatTarget` | No | Documents to format (specific key, type, or 'all') |
-| `opts` | `FormatOptions` | No | Format options |
-| `opts.dryRun` | `boolean` | No | Check formatting without writing changes |
-| `opts.failFast` | `boolean` | No | Stop at the first formatting error |
+| Parameter       | Type            | Required | Description                                        |
+| --------------- | --------------- | -------- | -------------------------------------------------- |
+| `target`        | `FormatTarget`  | No       | Documents to format (specific key, type, or 'all') |
+| `opts`          | `FormatOptions` | No       | Format options                                     |
+| `opts.dryRun`   | `boolean`       | No       | Check formatting without writing changes           |
+| `opts.failFast` | `boolean`       | No       | Stop at the first formatting error                 |
 
 #### Returns
 
@@ -460,10 +457,10 @@ async format(target?: FormatTarget, opts?: FormatOptions): Promise<number>
 await store.format();
 
 // Format specific type
-await store.format({ type: 'task' });
+await store.format({ type: "task" });
 
 // Format specific document
-await store.format({ type: 'task', id: 'task-1' });
+await store.format({ type: "task", id: "task-1" });
 ```
 
 ## Types
@@ -574,26 +571,23 @@ Filter object for Mango queries. Can be field conditions, logical operators, or 
 ```typescript
 type Filter = Record<string, any> | LogicalOperator;
 
-type LogicalOperator =
-  | { $and: Filter[] }
-  | { $or: Filter[] }
-  | { $not: Filter };
+type LogicalOperator = { $and: Filter[] } | { $or: Filter[] } | { $not: Filter };
 ```
 
 **Field Operators:**
 
 ```typescript
 type FieldOperator =
-  | { $eq: any }      // Equals
-  | { $ne: any }      // Not equals
-  | { $in: any[] }    // In array
-  | { $nin: any[] }   // Not in array
-  | { $gt: any }      // Greater than
-  | { $gte: any }     // Greater than or equal
-  | { $lt: any }      // Less than
-  | { $lte: any }     // Less than or equal
-  | { $exists: boolean }  // Field exists
-  | { $type: string };    // Type check
+  | { $eq: any } // Equals
+  | { $ne: any } // Not equals
+  | { $in: any[] } // In array
+  | { $nin: any[] } // Not in array
+  | { $gt: any } // Greater than
+  | { $gte: any } // Greater than or equal
+  | { $lt: any } // Less than
+  | { $lte: any } // Less than or equal
+  | { $exists: boolean } // Field exists
+  | { $type: string }; // Type check
 ```
 
 **Example:**
@@ -601,10 +595,10 @@ type FieldOperator =
 ```typescript
 {
   $and: [
-    { status: { $in: ['open', 'ready'] } },
+    { status: { $in: ["open", "ready"] } },
     { priority: { $gte: 5 } },
-    { assignee: { $exists: true } }
-  ]
+    { assignee: { $exists: true } },
+  ];
 }
 ```
 

@@ -252,6 +252,7 @@ find data -name "*.json" -size +100k -ls
 **Solutions**:
 
 1. **Archive old data**:
+
    ```bash
    # Move closed tasks to archive
    mkdir -p archive/task
@@ -259,6 +260,7 @@ find data -name "*.json" -size +100k -ls
    ```
 
 2. **Compress with git**:
+
    ```bash
    cd data
    git gc --aggressive --prune=now
@@ -342,6 +344,7 @@ git merge develop
 ### Document Limits
 
 **Recommended limits per type**:
+
 - **Optimal**: ≤10,000 documents
 - **Acceptable**: 10,000-25,000 documents
 - **Consider sharding**: >25,000 documents
@@ -349,6 +352,7 @@ git merge develop
 ### Document Size
 
 **Recommended document sizes**:
+
 - **Optimal**: ≤10 KB per document
 - **Acceptable**: 10-100 KB per document
 - **Avoid**: >100 KB per document (consider splitting)
@@ -356,6 +360,7 @@ git merge develop
 ### Total Store Size
 
 **Recommended total sizes**:
+
 - **Optimal**: ≤500 MB
 - **Acceptable**: 500 MB - 2 GB
 - **Consider alternatives**: >2 GB
@@ -431,6 +436,7 @@ export JSONSTORE_DEBUG=1
 ### Alerting
 
 Set up alerts for:
+
 - Disk usage >80%
 - Document count per type >20,000
 - Query duration >5s

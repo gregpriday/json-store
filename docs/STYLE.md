@@ -16,12 +16,12 @@ This guide defines conventions for JSON Store documentation to ensure consistenc
 Always use proper type annotations and imports:
 
 ```typescript
-import { openStore } from '@jsonstore/sdk';
+import { openStore } from "@jsonstore/sdk";
 
-const store = openStore({ root: './data' });
+const store = openStore({ root: "./data" });
 await store.put(
-  { type: 'task', id: 'task-1' },
-  { type: 'task', id: 'task-1', title: 'Fix bug', status: 'open' }
+  { type: "task", id: "task-1" },
+  { type: "task", id: "task-1", title: "Fix bug", status: "open" }
 );
 ```
 
@@ -68,8 +68,14 @@ Document that `$eq` can be omitted:
 
 ```typescript
 // These are equivalent:
-{ status: { $eq: 'open' } }
-{ status: 'open' }
+{
+  status: {
+    $eq: "open";
+  }
+}
+{
+  status: "open";
+}
 ```
 
 ## API Documentation
@@ -108,10 +114,10 @@ Even when showing Windows examples:
 
 ```typescript
 // Correct
-const store = openStore({ root: './data' });
+const store = openStore({ root: "./data" });
 
 // Incorrect (platform-specific)
-const store = openStore({ root: '.\\data' });
+const store = openStore({ root: ".\\data" });
 ```
 
 ### Show Relative Paths
@@ -133,12 +139,12 @@ Always show proper error handling in examples:
 
 ```typescript
 try {
-  const doc = await store.get({ type: 'task', id: 'task-1' });
+  const doc = await store.get({ type: "task", id: "task-1" });
   if (!doc) {
-    console.log('Document not found');
+    console.log("Document not found");
   }
 } catch (err) {
-  console.error('Failed to retrieve document:', err.message);
+  console.error("Failed to retrieve document:", err.message);
 }
 ```
 
@@ -188,15 +194,15 @@ indentation) to ensure clean Git diffs.
 Every example should be runnable with minimal setup:
 
 ```typescript
-import { openStore } from '@jsonstore/sdk';
+import { openStore } from "@jsonstore/sdk";
 
 // Create store
-const store = openStore({ root: './data' });
+const store = openStore({ root: "./data" });
 
 // Your example code here
 await store.put(
-  { type: 'task', id: 'task-1' },
-  { type: 'task', id: 'task-1', title: 'Example', status: 'open' }
+  { type: "task", id: "task-1" },
+  { type: "task", id: "task-1", title: "Example", status: "open" }
 );
 ```
 
@@ -207,24 +213,24 @@ Build complexity gradually:
 ```typescript
 // Basic query
 await store.query({
-  type: 'task',
-  filter: { status: 'open' }
+  type: "task",
+  filter: { status: "open" },
 });
 
 // With sorting
 await store.query({
-  type: 'task',
-  filter: { status: 'open' },
-  sort: { priority: -1 }
+  type: "task",
+  filter: { status: "open" },
+  sort: { priority: -1 },
 });
 
 // With pagination
 await store.query({
-  type: 'task',
-  filter: { status: 'open' },
+  type: "task",
+  filter: { status: "open" },
   sort: { priority: -1 },
   limit: 10,
-  skip: 0
+  skip: 0,
 });
 ```
 
@@ -273,7 +279,7 @@ Use for:
 
 Use sparingly for:
 
-- *Emphasis* within a sentence
+- _Emphasis_ within a sentence
 - Book or specification titles
 
 ## Platform Notes
@@ -292,6 +298,7 @@ Always state version requirements:
 
 ```markdown
 **Requirements**:
+
 - Node.js 18.0.0 or higher
 - pnpm 8.0.0 or higher
 ```

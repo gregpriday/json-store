@@ -5,6 +5,7 @@ JSON Store includes a canonical document formatter to ensure clean Git diffs and
 ## Why Format Documents?
 
 The formatter ensures:
+
 - **Byte-stable output**: Identical formatting every time (stable key ordering, consistent line endings)
 - **Clean Git diffs**: Formatting changes don't create noise in version control
 - **Cross-platform consistency**: LF line endings on all platforms (Windows, macOS, Linux)
@@ -109,13 +110,13 @@ The command exits with code 1 if any documents need formatting, failing the buil
 Formatting behavior is controlled by Store options:
 
 ```javascript
-import { openStore } from '@jsonstore/sdk';
+import { openStore } from "@jsonstore/sdk";
 
 const store = openStore({
-  root: './data',
-  indent: 2,                    // Spaces for indentation (default: 2)
-  stableKeyOrder: 'alpha',      // Alphabetical key ordering (default: 'alpha')
-  formatConcurrency: 16,        // Parallel workers for format operations (default: 16, range: 1-64)
+  root: "./data",
+  indent: 2, // Spaces for indentation (default: 2)
+  stableKeyOrder: "alpha", // Alphabetical key ordering (default: 'alpha')
+  formatConcurrency: 16, // Parallel workers for format operations (default: 16, range: 1-64)
 });
 ```
 

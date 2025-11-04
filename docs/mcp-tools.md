@@ -23,8 +23,8 @@ Retrieve a document by type and ID.
 
 ```json
 {
-  "type": "string",     // Required: Entity type (e.g., "task", "user")
-  "id": "string"        // Required: Document ID
+  "type": "string", // Required: Entity type (e.g., "task", "user")
+  "id": "string" // Required: Document ID
 }
 ```
 
@@ -58,9 +58,9 @@ Retrieve a document by type and ID.
 
 ```typescript
 // Agent uses get_doc tool
-const response = await callTool('get_doc', {
-  type: 'task',
-  id: 'task-1'
+const response = await callTool("get_doc", {
+  type: "task",
+  id: "task-1",
 });
 ```
 
@@ -78,16 +78,18 @@ Store or update a document.
 
 ```json
 {
-  "type": "string",     // Required: Entity type
-  "id": "string",       // Required: Document ID
-  "doc": {              // Required: Document object (must include type and id)
+  "type": "string", // Required: Entity type
+  "id": "string", // Required: Document ID
+  "doc": {
+    // Required: Document object (must include type and id)
     "type": "string",
-    "id": "string",
+    "id": "string"
     // ... other fields
   },
-  "commit": {           // Optional: Git commit options
-    "message": "string",  // Commit message
-    "batch": "string"     // Batch identifier for grouping commits
+  "commit": {
+    // Optional: Git commit options
+    "message": "string", // Commit message
+    "batch": "string" // Batch identifier for grouping commits
   }
 }
 ```
@@ -113,19 +115,19 @@ Store or update a document.
 
 ```typescript
 // Agent creates a new task
-await callTool('put_doc', {
-  type: 'task',
-  id: 'task-1',
+await callTool("put_doc", {
+  type: "task",
+  id: "task-1",
   doc: {
-    type: 'task',
-    id: 'task-1',
-    title: 'Fix login bug',
-    status: 'open',
-    priority: 8
+    type: "task",
+    id: "task-1",
+    title: "Fix login bug",
+    status: "open",
+    priority: 8,
   },
   commit: {
-    message: 'feat(task): add task-1'
-  }
+    message: "feat(task): add task-1",
+  },
 });
 ```
 
@@ -143,10 +145,11 @@ Remove a document. Operation is idempotent (no error if document doesn't exist).
 
 ```json
 {
-  "type": "string",     // Required: Entity type
-  "id": "string",       // Required: Document ID
-  "commit": {           // Optional: Git commit options
-    "message": "string"   // Commit message
+  "type": "string", // Required: Entity type
+  "id": "string", // Required: Document ID
+  "commit": {
+    // Optional: Git commit options
+    "message": "string" // Commit message
   }
 }
 ```
@@ -172,12 +175,12 @@ Remove a document. Operation is idempotent (no error if document doesn't exist).
 
 ```typescript
 // Agent removes a completed task
-await callTool('rm_doc', {
-  type: 'task',
-  id: 'task-1',
+await callTool("rm_doc", {
+  type: "task",
+  id: "task-1",
   commit: {
-    message: 'chore(task): remove completed task'
-  }
+    message: "chore(task): remove completed task",
+  },
 });
 ```
 
@@ -194,7 +197,7 @@ List all document IDs for a given type. Results are capped at 5000 documents.
 
 ```json
 {
-  "type": "string"      // Required: Entity type to list
+  "type": "string" // Required: Entity type to list
 }
 ```
 
@@ -222,8 +225,8 @@ List all document IDs for a given type. Results are capped at 5000 documents.
 
 ```typescript
 // Agent lists all tasks
-const response = await callTool('list_ids', {
-  type: 'task'
+const response = await callTool("list_ids", {
+  type: "task",
 });
 
 const { ids, count } = response.content[1].json;
@@ -243,19 +246,22 @@ Execute a Mango query to find matching documents.
 
 ```json
 {
-  "type": "string",       // Optional: Restrict to specific type
-  "filter": {             // Required: Mango filter object
+  "type": "string", // Optional: Restrict to specific type
+  "filter": {
+    // Required: Mango filter object
     // Supports: $eq, $ne, $in, $nin, $gt, $gte, $lt, $lte,
     //           $exists, $type, $and, $or, $not
   },
-  "projection": {         // Optional: Fields to include (1) or exclude (0)
+  "projection": {
+    // Optional: Fields to include (1) or exclude (0)
     "field": 1
   },
-  "sort": {               // Optional: Sort specification
-    "field": 1            // 1 = ascending, -1 = descending
+  "sort": {
+    // Optional: Sort specification
+    "field": 1 // 1 = ascending, -1 = descending
   },
-  "limit": 100,           // Optional: Max results (default: 100, max: 1000)
-  "skip": 0               // Optional: Skip results (for pagination, max: 10000)
+  "limit": 100, // Optional: Max results (default: 100, max: 1000)
+  "skip": 0 // Optional: Skip results (for pagination, max: 10000)
 }
 ```
 
@@ -298,16 +304,13 @@ Execute a Mango query to find matching documents.
 
 ```typescript
 // Agent finds high-priority open tasks
-const response = await callTool('query', {
-  type: 'task',
+const response = await callTool("query", {
+  type: "task",
   filter: {
-    $and: [
-      { status: { $eq: 'open' } },
-      { priority: { $gte: 8 } }
-    ]
+    $and: [{ status: { $eq: "open" } }, { priority: { $gte: 8 } }],
   },
   sort: { priority: -1 },
-  limit: 10
+  limit: 10,
 });
 
 const { results, count } = response.content[1].json;
@@ -326,8 +329,8 @@ Create or update an equality index for fast lookups on a field. Operation is ide
 
 ```json
 {
-  "type": "string",     // Required: Entity type
-  "field": "string"     // Required: Field name (supports dot notation)
+  "type": "string", // Required: Entity type
+  "field": "string" // Required: Field name (supports dot notation)
 }
 ```
 
@@ -352,20 +355,20 @@ Create or update an equality index for fast lookups on a field. Operation is ide
 
 ```typescript
 // Agent creates indexes for frequently queried fields
-await callTool('ensure_index', {
-  type: 'task',
-  field: 'status'
+await callTool("ensure_index", {
+  type: "task",
+  field: "status",
 });
 
-await callTool('ensure_index', {
-  type: 'task',
-  field: 'priority'
+await callTool("ensure_index", {
+  type: "task",
+  field: "priority",
 });
 
 // Index on nested field
-await callTool('ensure_index', {
-  type: 'task',
-  field: 'assignee.id'
+await callTool("ensure_index", {
+  type: "task",
+  field: "assignee.id",
 });
 ```
 
@@ -590,22 +593,22 @@ Each tool has a timeout to prevent hanging operations:
 ### With Custom MCP Client
 
 ```typescript
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const transport = new StdioClientTransport({
-  command: 'pnpm',
-  args: ['--filter', '@jsonstore/server', 'start'],
-  env: { JSONSTORE_ROOT: './data' }
+  command: "pnpm",
+  args: ["--filter", "@jsonstore/server", "start"],
+  env: { JSONSTORE_ROOT: "./data" },
 });
 
-const client = new Client({ name: 'my-app', version: '1.0.0' }, { capabilities: {} });
+const client = new Client({ name: "my-app", version: "1.0.0" }, { capabilities: {} });
 await client.connect(transport);
 
 // Call tools
 const result = await client.callTool({
-  name: 'get_doc',
-  arguments: { type: 'task', id: 'task-1' }
+  name: "get_doc",
+  arguments: { type: "task", id: "task-1" },
 });
 ```
 
