@@ -338,24 +338,23 @@ describe("MCP Server E2E Tests", () => {
         },
       });
 
-      // Query for open tasks
+      // Query for open tasks - use flat filter structure
       const response = await client.call("tools/call", {
         name: "query",
         arguments: {
-          query: {
-            type: "task",
-            filter: { status: { $eq: "open" } },
-            sort: { priority: -1 },
-          },
+          type: "task",
+          filter: { status: { $eq: "open" } },
+          sort: { priority: -1 },
         },
       });
 
       expect(response.result).toBeDefined();
       const jsonContent = response.result.content.find((c: any) => c.type === "json");
       expect(jsonContent).toBeDefined();
-      expect(jsonContent.json.docs).toHaveLength(2);
-      expect(jsonContent.json.docs[0].priority).toBe(8);
-      expect(jsonContent.json.docs[1].priority).toBe(5);
+      expect(jsonContent.json.results).toHaveLength(2);
+      expect(jsonContent.json.count).toBe(2);
+      expect(jsonContent.json.results[0].priority).toBe(8);
+      expect(jsonContent.json.results[1].priority).toBe(5);
     });
 
     it("should remove documents", async () => {
@@ -369,9 +368,9 @@ describe("MCP Server E2E Tests", () => {
         },
       });
 
-      // Remove document
+      // Remove document - use correct tool name
       const removeResponse = await client.call("tools/call", {
-        name: "remove_doc",
+        name: "rm_doc",
         arguments: {
           type: "task",
           id: "task-1",
@@ -425,20 +424,19 @@ describe("MCP Server E2E Tests", () => {
       const queryResponse = await client.call("tools/call", {
         name: "query",
         arguments: {
-          query: {
-            type: "task",
-            filter: { status: { $eq: "open" } },
-          },
+          type: "task",
+          filter: { status: { $eq: "open" } },
         },
       });
 
       const queryJsonContent = queryResponse.result.content.find((c: any) => c.type === "json");
-      expect(queryJsonContent.json.docs).toHaveLength(5);
+      expect(queryJsonContent.json.results).toHaveLength(5);
+      expect(queryJsonContent.json.count).toBe(5);
     });
   });
 
   describe("Error Handling", () => {
-    it("should handle unknown tool name", async () => {
+    it("should handle unknown tool name with error code", async () => {
       const response = await client.call("tools/call", {
         name: "unknown_tool",
         arguments: {},
@@ -446,9 +444,10 @@ describe("MCP Server E2E Tests", () => {
 
       expect(response.error).toBeDefined();
       expect(response.error?.message).toContain("Unknown tool");
+      expect(response.error?.code).toBe(-32602); // InvalidParams
     });
 
-    it("should validate tool arguments", async () => {
+    it("should validate tool arguments with error code", async () => {
       const response = await client.call("tools/call", {
         name: "put_doc",
         arguments: {
@@ -458,7 +457,26 @@ describe("MCP Server E2E Tests", () => {
       });
 
       expect(response.error).toBeDefined();
-      expect(response.error?.code).toBeDefined();
+      expect(response.error?.code).toBe(-32602); // InvalidParams
+      expect(response.error?.message).toContain("Validation");
+    });
+
+    it("should handle document not found with proper error", async () => {
+      const response = await client.call("tools/call", {
+        name: "get_doc",
+        arguments: {
+          type: "nonexistent",
+          id: "missing",
+        },
+      });
+
+      // Should return result with null doc, not an error
+      if (response.error) {
+        expect(response.error.message).toContain("not found");
+      } else {
+        const jsonContent = response.result.content.find((c: any) => c.type === "json");
+        expect(jsonContent.json.doc).toBeNull();
+      }
     });
   });
 

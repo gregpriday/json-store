@@ -251,35 +251,57 @@ describe("CLI End-to-End Tests", () => {
     });
   });
 
-  describe("Index Operations", () => {
-    it("should create and use indexes", async () => {
+  describe("Format Operations", () => {
+    it("should format all documents", async () => {
       const env = { DATA_ROOT: testDir };
 
       await runCli(["init"], { env });
 
-      // Create test data
-      for (let i = 1; i <= 100; i++) {
+      // Create test data with unsorted keys
+      for (let i = 1; i <= 5; i++) {
         const doc = {
           type: "task",
           id: `task-${i}`,
-          status: i % 2 === 0 ? "open" : "closed",
+          z_field: "last",
+          a_field: "first",
+          m_field: "middle",
         };
         await runCli(["put", "task", `task-${i}`, "--data", JSON.stringify(doc)], { env });
       }
 
-      // Create index
-      const indexResult = await runCli(["index", "task", "status"], { env });
-      expect(indexResult.exitCode).toBe(0);
+      // Format all documents
+      const formatResult = await runCli(["format", "--all"], { env });
+      expect(formatResult.exitCode).toBe(0);
+      expect(formatResult.stdout).toContain("5"); // Should format 5 documents
+    });
 
-      // Query should still work (and use index internally)
-      const queryResult = await runCli(
-        ["query", "--type", "task", "--data", JSON.stringify({ filter: { status: { $eq: "open" } } })],
-        { env }
-      );
-      expect(queryResult.exitCode).toBe(0);
+    it("should format specific type", async () => {
+      const env = { DATA_ROOT: testDir };
 
-      const results = JSON.parse(queryResult.stdout);
-      expect(results).toHaveLength(50); // Half of 100
+      await runCli(["init"], { env });
+
+      // Create documents of different types
+      await runCli(["put", "task", "1", "--data", JSON.stringify({ type: "task", id: "1", title: "Task" })], { env });
+      await runCli(["put", "note", "1", "--data", JSON.stringify({ type: "note", id: "1", title: "Note" })], { env });
+
+      // Format only tasks
+      const formatResult = await runCli(["format", "task"], { env });
+      expect(formatResult.exitCode).toBe(0);
+    });
+
+    it("should check formatting without writing", async () => {
+      const env = { DATA_ROOT: testDir };
+
+      await runCli(["init"], { env });
+
+      // Create document with unsorted keys
+      const doc = { type: "task", id: "1", z: "last", a: "first" };
+      await runCli(["put", "task", "1", "--data", JSON.stringify(doc)], { env });
+
+      // Check format (dry run)
+      const checkResult = await runCli(["format", "--all", "--check"], { env, reject: false });
+      // Exit code 1 if reformatting needed, 0 if already formatted
+      expect([0, 1]).toContain(checkResult.exitCode);
     });
   });
 

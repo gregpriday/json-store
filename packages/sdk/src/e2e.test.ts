@@ -109,6 +109,123 @@ describe("SDK End-to-End Integration Tests", () => {
     });
   });
 
+  describe("Array and Nested Field Queries", () => {
+    beforeEach(async () => {
+      // Create documents with arrays and nested fields
+      await store.put(
+        { type: "user", id: "user-1" },
+        {
+          type: "user",
+          id: "user-1",
+          name: "Alice",
+          tags: ["admin", "developer"],
+          meta: { owner: { email: "alice@example.com" }, verified: true },
+        }
+      );
+      await store.put(
+        { type: "user", id: "user-2" },
+        {
+          type: "user",
+          id: "user-2",
+          name: "Bob",
+          tags: ["developer"],
+          meta: { owner: { email: "bob@example.com" }, verified: false },
+        }
+      );
+      await store.put(
+        { type: "user", id: "user-3" },
+        {
+          type: "user",
+          id: "user-3",
+          name: "Charlie",
+          tags: [],
+          meta: { owner: { email: "charlie@example.com" } },
+        }
+      );
+    });
+
+    it("should query array fields with $eq (containment)", async () => {
+      const results = await store.query({
+        type: "user",
+        filter: { tags: { $eq: "admin" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("user-1");
+    });
+
+    it("should query nested fields with dot notation", async () => {
+      const results = await store.query({
+        type: "user",
+        filter: { "meta.owner.email": { $eq: "bob@example.com" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("user-2");
+    });
+
+    it("should handle nested boolean fields", async () => {
+      const verified = await store.query({
+        type: "user",
+        filter: { "meta.verified": { $eq: true } },
+      });
+
+      expect(verified).toHaveLength(1);
+      expect(verified[0].id).toBe("user-1");
+
+      const unverified = await store.query({
+        type: "user",
+        filter: { "meta.verified": { $eq: false } },
+      });
+
+      expect(unverified).toHaveLength(1);
+      expect(unverified[0].id).toBe("user-2");
+    });
+
+    it("should handle $exists on nested fields", async () => {
+      const withVerified = await store.query({
+        type: "user",
+        filter: { "meta.verified": { $exists: true } },
+      });
+
+      expect(withVerified).toHaveLength(2);
+
+      const withoutVerified = await store.query({
+        type: "user",
+        filter: { "meta.verified": { $exists: false } },
+      });
+
+      expect(withoutVerified).toHaveLength(1);
+      expect(withoutVerified[0].id).toBe("user-3");
+    });
+
+    it("should handle empty arrays", async () => {
+      const emptyTags = await store.query({
+        type: "user",
+        filter: { tags: { $eq: [] } },
+      });
+
+      // Empty array should not match $eq with empty array literal
+      // This tests the array containment semantics
+      expect(emptyTags).toHaveLength(0);
+    });
+
+    it("should handle null values in queries", async () => {
+      await store.put(
+        { type: "user", id: "user-null" },
+        { type: "user", id: "user-null", name: "Null User", description: null } as any
+      );
+
+      const results = await store.query({
+        type: "user",
+        filter: { description: { $eq: null } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("user-null");
+    });
+  });
+
   describe("Complex Queries with DSL Operators", () => {
     beforeEach(async () => {
       // Create deterministic test dataset
@@ -177,6 +294,93 @@ describe("SDK End-to-End Integration Tests", () => {
       // No result should have status "open"
       for (const doc of results) {
         expect(doc.status).not.toBe("open");
+      }
+    });
+
+    it("should handle $ne operator", async () => {
+      const results = await store.query({
+        type: "task",
+        filter: { status: { $ne: "open" } },
+      });
+
+      // All results should not have status "open"
+      for (const doc of results) {
+        expect(doc.status).not.toBe("open");
+      }
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it("should handle $nin operator", async () => {
+      const results = await store.query({
+        type: "task",
+        filter: { status: { $nin: ["open", "closed"] } },
+      });
+
+      // All results should have status "ready"
+      for (const doc of results) {
+        expect(doc.status).toBe("ready");
+      }
+    });
+
+    it("should handle $gt and $lt operators", async () => {
+      const gtResults = await store.query({
+        type: "task",
+        filter: { priority: { $gt: 5 } },
+      });
+
+      for (const doc of gtResults) {
+        expect(doc.priority).toBeGreaterThan(5);
+      }
+
+      const ltResults = await store.query({
+        type: "task",
+        filter: { priority: { $lt: 3 } },
+      });
+
+      for (const doc of ltResults) {
+        expect(doc.priority).toBeLessThan(3);
+      }
+    });
+
+    it("should handle $lte operator", async () => {
+      const results = await store.query({
+        type: "task",
+        filter: { priority: { $lte: 2 } },
+      });
+
+      for (const doc of results) {
+        expect(doc.priority).toBeLessThanOrEqual(2);
+      }
+    });
+
+    it("should handle $type operator", async () => {
+      const results = await store.query({
+        type: "task",
+        filter: { priority: { $type: "number" } },
+      });
+
+      for (const doc of results) {
+        expect(typeof doc.priority).toBe("number");
+      }
+      expect(results.length).toBe(100); // All tasks have numeric priority
+    });
+
+    it("should handle $exists operator with false", async () => {
+      // Add a task without tags
+      await store.put(
+        { type: "task", id: "task-notags" },
+        { type: "task", id: "task-notags", title: "No Tags", status: "open", priority: 5 }
+      );
+
+      const results = await store.query({
+        type: "task",
+        filter: { tags: { $exists: false } },
+      });
+
+      // Should find the task without tags
+      expect(results.length).toBeGreaterThan(0);
+      for (const doc of results) {
+        expect(doc.tags).toBeUndefined();
       }
     });
   });
