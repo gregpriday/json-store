@@ -49,7 +49,10 @@ export interface CliStore {
   /**
    * Format documents to canonical representation
    */
-  format(scope: { all?: boolean; type?: string; id?: string }): Promise<void>;
+  format(
+    scope: { all?: boolean; type?: string; id?: string },
+    options?: { dryRun?: boolean; failFast?: boolean }
+  ): Promise<number>;
 
   /**
    * Get statistics for the store or a type
@@ -116,15 +119,15 @@ export function openCliStore(root: string): CliStore {
       return store.query(spec);
     },
 
-    async format(scope): Promise<void> {
+    async format(scope, options?): Promise<number> {
       if (scope.all) {
-        return store.format({ all: true });
+        return store.format({ all: true }, options);
       }
       if (scope.type && scope.id) {
-        return store.format({ type: scope.type, id: scope.id });
+        return store.format({ type: scope.type, id: scope.id }, options);
       }
       if (scope.type) {
-        return store.format({ type: scope.type });
+        return store.format({ type: scope.type }, options);
       }
       if (scope.id) {
         throw new Error("Format requires a type when specifying an id");

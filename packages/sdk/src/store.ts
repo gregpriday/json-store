@@ -1155,10 +1155,6 @@ class JSONStore implements Store {
     }
   }
 
-  async stats(_type?: string): Promise<StoreStats> {
-    throw new Error("Not implemented yet");
-  }
-
   async close(): Promise<void> {
     // Cleanup resources (file watchers, cache, etc.)
     this.#cache.clear();

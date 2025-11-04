@@ -9,7 +9,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { createInterface } from "readline/promises";
-import type { QuerySpec, FormatTarget, Store } from "@jsonstore/sdk";
+import type { QuerySpec, FormatTarget } from "@jsonstore/sdk";
 import { openCliStore } from "./lib/store.js";
 import { resolveRoot } from "./lib/env.js";
 import { parseNonNegativeInt, parseJson } from "./lib/arg.js";
