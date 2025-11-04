@@ -19,6 +19,7 @@
     "clean": "rm -rf dist *.tsbuildinfo",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench": "NODE_OPTIONS=--expose-gc tsx benchmarks/performance.bench.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

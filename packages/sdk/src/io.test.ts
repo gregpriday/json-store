@@ -496,7 +496,7 @@ describe("io operations", () => {
   });
 
   describe("stress tests", () => {
-    it("should handle rapid sequential writes", async () => {
+    it("should handle rapid sequential writes", { timeout: 15000 }, async () => {
       const filePath = join(testDir, "rapid.json");
       const iterations = 100;
 

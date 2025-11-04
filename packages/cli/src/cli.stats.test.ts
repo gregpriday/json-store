@@ -60,7 +60,7 @@ describe("CLI stats command", () => {
 
   describe("basic stats output", () => {
     it("should display stats for empty store", async () => {
-      const result = await execCLI(["stats"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Documents: 0");
@@ -71,7 +71,7 @@ describe("CLI stats command", () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
       await store.put({ type: "user", id: "bob" }, { type: "user", id: "bob", name: "Bob" });
 
-      const result = await execCLI(["stats"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Documents: 2");
@@ -83,7 +83,7 @@ describe("CLI stats command", () => {
       await store.put({ type: "user", id: "bob" }, { type: "user", id: "bob", name: "Bob" });
       await store.put({ type: "post", id: "post1" }, { type: "post", id: "post1", title: "Hello" });
 
-      const result = await execCLI(["stats", "--type", "user"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--type", "user"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Documents: 2");
@@ -95,7 +95,7 @@ describe("CLI stats command", () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
       await store.put({ type: "user", id: "bob" }, { type: "user", id: "bob", name: "Bob" });
 
-      const result = await execCLI(["stats", "--detailed"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--detailed"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Documents: 2");
@@ -111,7 +111,7 @@ describe("CLI stats command", () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
       await store.put({ type: "post", id: "post1" }, { type: "post", id: "post1", title: "Hello" });
 
-      const result = await execCLI(["stats", "--detailed"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--detailed"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("By Type:");
@@ -124,7 +124,7 @@ describe("CLI stats command", () => {
     it("should output basic stats as JSON", async () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
 
-      const result = await execCLI(["stats", "--json"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--json"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
 
@@ -138,7 +138,7 @@ describe("CLI stats command", () => {
     it("should output detailed stats as JSON", async () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
 
-      const result = await execCLI(["stats", "--detailed", "--json"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--detailed", "--json"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
 
@@ -156,7 +156,9 @@ describe("CLI stats command", () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
       await store.put({ type: "post", id: "post1" }, { type: "post", id: "post1", title: "Hello" });
 
-      const result = await execCLI(["stats", "--type", "user", "--json"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--type", "user", "--json"], {
+        JSONSTORE_ROOT: testDir,
+      });
 
       expect(result.exitCode).toBe(0);
 
@@ -167,7 +169,7 @@ describe("CLI stats command", () => {
 
   describe("error handling", () => {
     it("should handle invalid type name gracefully", async () => {
-      const result = await execCLI(["stats", "--type", "../etc"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--type", "../etc"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Invalid type name");
@@ -175,7 +177,7 @@ describe("CLI stats command", () => {
 
     it("should exit with code 3 when stats are disabled", async () => {
       const result = await execCLI(["stats"], {
-        DATA_ROOT: testDir,
+        JSONSTORE_ROOT: testDir,
         JSONSTORE_ENABLE_STATS: "0",
       });
 
@@ -189,14 +191,14 @@ describe("CLI stats command", () => {
       // Create a small document
       await store.put({ type: "tiny", id: "t1" }, { type: "tiny", id: "t1", x: "a" });
 
-      const result1 = await execCLI(["stats"], { DATA_ROOT: testDir });
+      const result1 = await execCLI(["stats"], { JSONSTORE_ROOT: testDir });
       expect(result1.stdout).toMatch(/Total size: \d+(\.\d+)? B/);
 
       // Create a larger document (> 1KB)
       const largeData = "x".repeat(2000);
       await store.put({ type: "large", id: "l1" }, { type: "large", id: "l1", data: largeData });
 
-      const result2 = await execCLI(["stats"], { DATA_ROOT: testDir });
+      const result2 = await execCLI(["stats"], { JSONSTORE_ROOT: testDir });
       expect(result2.stdout).toMatch(/Total size: \d+(\.\d+)? [KM]B/);
     });
   });
@@ -205,7 +207,7 @@ describe("CLI stats command", () => {
     it("should show zero stats for non-existent type", async () => {
       await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
 
-      const result = await execCLI(["stats", "--type", "nonexistent"], { DATA_ROOT: testDir });
+      const result = await execCLI(["stats", "--type", "nonexistent"], { JSONSTORE_ROOT: testDir });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Documents: 0");
