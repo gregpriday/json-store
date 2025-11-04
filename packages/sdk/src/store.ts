@@ -227,11 +227,9 @@ class JSONStore implements Store {
     }
 
     // Check for fast path: single type, simple ID-based filter, no sort/projection
-    let _usedFastPath = false;
     if (spec.type && !spec.sort && !spec.projection && this.canUseFastPath(spec.filter)) {
       const ids = this.extractIdsFromFilter(spec.filter);
       if (ids) {
-        _usedFastPath = true;
         const docs: Document[] = [];
 
         for (const id of ids) {
