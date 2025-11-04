@@ -6,9 +6,8 @@
 import { Wal } from "./txn/wal.js";
 import { IndexTxn, type DocChange } from "./txn/index-txn.js";
 import { ByPathAdapter } from "./adapters/by-path-adapter.js";
-import type { Key, MaterializedPath, Document, Slug } from "../types.js";
-import { computePath } from "./codec.js";
-import { validatePathDepth } from "../validation.js";
+import { FileLock } from "./lock.js";
+import type { Key, MaterializedPath, Document } from "../types.js";
 
 /**
  * Options for hierarchy manager
@@ -26,17 +25,19 @@ export interface HierarchyManagerOptions {
 export class HierarchyManager {
   #root: string;
   #indent: number;
-  #maxDepth: number;
   #wal: Wal;
+  #lock: FileLock;
   #byPathAdapter: ByPathAdapter;
 
   constructor(options: HierarchyManagerOptions) {
     this.#root = options.root;
     this.#indent = options.indent ?? 2;
-    this.#maxDepth = options.maxDepth ?? 32;
 
     // Initialize WAL
     this.#wal = new Wal(this.#root);
+
+    // Initialize lock
+    this.#lock = new FileLock(this.#root);
 
     // Initialize adapters
     this.#byPathAdapter = new ByPathAdapter(this.#root, this.#indent);
@@ -66,49 +67,38 @@ export class HierarchyManager {
   async putHierarchical(
     key: Key,
     doc: Document,
-    parentKey?: Key,
-    slug?: Slug,
+    _parentKey?: Key,
+    _slug?: string,
     oldDoc?: Document
   ): Promise<void> {
-    // Compute materialized path if slug provided
-    let materializedPath: MaterializedPath | undefined;
+    // Use lock to prevent concurrent writes
+    return await this.#lock.withLock(async () => {
+      // Path should already be computed and validated by Store
+      // We just need to update the indexes
 
-    if (slug) {
-      // Get parent's path
-      const parentPath = parentKey ? await this.#getParentPath(parentKey) : undefined;
+      // Create document change
+      const change: DocChange = {
+        key,
+        newDoc: doc,
+        oldDoc,
+      };
 
-      // Compute this document's path
-      materializedPath = computePath(parentPath, slug);
+      // Create transaction with adapters
+      const adapters = [this.#byPathAdapter];
+      const txn = new IndexTxn(this.#wal, adapters);
 
-      // Validate depth
-      validatePathDepth(materializedPath, this.#maxDepth);
+      try {
+        // Prepare transaction
+        await txn.prepare(change);
 
-      // Add path to document
-      (doc as any).path = materializedPath;
-    }
-
-    // Create document change
-    const change: DocChange = {
-      key,
-      newDoc: doc,
-      oldDoc,
-    };
-
-    // Create transaction with adapters
-    const adapters = [this.#byPathAdapter];
-    const txn = new IndexTxn(this.#wal, adapters);
-
-    try {
-      // Prepare transaction
-      await txn.prepare(change);
-
-      // Commit transaction
-      await txn.commit();
-    } catch (err) {
-      // Rollback on error
-      await txn.rollback();
-      throw err;
-    }
+        // Commit transaction
+        await txn.commit();
+      } catch (err) {
+        // Rollback on error
+        await txn.rollback();
+        throw err;
+      }
+    });
   }
 
   /**
@@ -148,17 +138,6 @@ export class HierarchyManager {
     return await this.#byPathAdapter.rebuild(docsWithPaths);
   }
 
-  /**
-   * Get parent's materialized path
-   * @param _parentKey - Parent key
-   * @returns Parent's materialized path
-   */
-  async #getParentPath(_parentKey: Key): Promise<MaterializedPath | undefined> {
-    // This would need to load the parent document to get its path
-    // For now, we'll assume the parent path is passed in or loaded separately
-    // TODO: Load parent document to get path
-    return undefined;
-  }
 
   /**
    * Get WAL statistics

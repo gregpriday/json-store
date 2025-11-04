@@ -62,18 +62,29 @@ export class Wal {
    */
   async prepare(txnId: string, manifest: TxnManifest): Promise<void> {
     const manifestPath = path.join(this.#walDir, txnId, "manifest.json");
+    const txnDir = path.join(this.#walDir, txnId);
 
     // Write manifest atomically
     const content = stableStringify(manifest, 2, "alpha");
     await atomicWrite(manifestPath, content);
 
-    // Fsync the directory to ensure manifest is durable
+    // Fsync manifest file to ensure it's written to disk
     try {
-      const dirFd = await fs.open(path.join(this.#walDir, txnId), "r");
+      const fileFd = await fs.open(manifestPath, "r");
+      await fileFd.sync();
+      await fileFd.close();
+    } catch (err) {
+      // Fsync not supported on all platforms, log warning but continue
+      console.warn("Failed to fsync manifest file:", err);
+    }
+
+    // Fsync the directory to ensure directory entry is durable
+    try {
+      const dirFd = await fs.open(txnDir, "r");
       await dirFd.sync();
       await dirFd.close();
     } catch (err) {
-      // Fsync not supported on all platforms, continue anyway
+      // Fsync not supported on all platforms, log warning but continue
       console.warn("Failed to fsync transaction directory:", err);
     }
   }
@@ -94,6 +105,26 @@ export class Wal {
 
       // Atomic rename
       await fs.rename(sourcePath, targetPath);
+
+      // Fsync the target file to ensure it's durable
+      try {
+        const fileFd = await fs.open(targetPath, "r");
+        await fileFd.sync();
+        await fileFd.close();
+      } catch (err) {
+        // Fsync not supported on all platforms, log warning but continue
+        console.warn(`Failed to fsync target file ${targetPath}:`, err);
+      }
+
+      // Fsync the parent directory to ensure directory entry is durable
+      try {
+        const dirFd = await fs.open(path.dirname(targetPath), "r");
+        await dirFd.sync();
+        await dirFd.close();
+      } catch (err) {
+        // Fsync not supported on all platforms, log warning but continue
+        console.warn(`Failed to fsync target directory:`, err);
+      }
     }
 
     // Delete transaction directory (cleanup)

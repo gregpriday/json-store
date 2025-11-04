@@ -71,11 +71,14 @@ export class IndexTxn {
 
     // Collect operations from all adapters
     const allOperations: TxnManifest["operations"] = [];
+    const preparedAdapters: IndexAdapter[] = [];
 
     try {
+      // Prepare all adapters - track which ones succeed
       for (const adapter of this.#adapters) {
         const ops = await adapter.prepare(change, scratchDir);
         allOperations.push(...ops);
+        preparedAdapters.push(adapter);
       }
 
       // Build manifest
@@ -90,26 +93,51 @@ export class IndexTxn {
 
       return txnId;
     } catch (err) {
-      // Rollback on prepare failure
-      await this.rollback();
+      // Rollback adapters that succeeded before the failure
+      for (const adapter of preparedAdapters) {
+        if (adapter.rollback) {
+          try {
+            await adapter.rollback(change);
+          } catch (rollbackErr) {
+            // Log but don't fail - best effort rollback
+            console.error("Adapter rollback failed during prepare error:", rollbackErr);
+          }
+        }
+      }
+
+      // Clean up WAL
+      await this.#wal.rollback(txnId);
+
+      // Clear state
+      this.#txnId = undefined;
+      this.#manifest = undefined;
+
       throw err;
     }
   }
 
   /**
    * Commit transaction by renaming staged files
+   * If commit fails partway through, WAL recovery will replay on restart
    */
   async commit(): Promise<void> {
     if (!this.#txnId || !this.#manifest) {
       throw new Error("No transaction in progress");
     }
 
-    // Commit via WAL
-    await this.#wal.commit(this.#txnId, this.#manifest);
+    try {
+      // Commit via WAL - this is atomic per file but not across all files
+      // If we crash during commit, WAL recovery will replay the remaining renames
+      await this.#wal.commit(this.#txnId, this.#manifest);
 
-    // Clear state
-    this.#txnId = undefined;
-    this.#manifest = undefined;
+      // Clear state
+      this.#txnId = undefined;
+      this.#manifest = undefined;
+    } catch (err) {
+      // Commit failed - leave manifest in place for recovery
+      // Don't clear state so rollback can clean up
+      throw err;
+    }
   }
 
   /**
@@ -176,8 +204,12 @@ export class IndexTxn {
     // Build full source path
     const sourcePath = path.join(scratchDir, relativePath);
 
-    // Ensure parent directory exists for source
-    await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+    // Ensure scratch directory itself exists
+    await fs.mkdir(scratchDir, { recursive: true });
+
+    // Ensure parent directory exists for source file
+    const sourceDir = path.dirname(sourcePath);
+    await fs.mkdir(sourceDir, { recursive: true });
 
     // Write content
     await fs.writeFile(sourcePath, content, "utf-8");
@@ -185,8 +217,9 @@ export class IndexTxn {
     // Compute hash
     const hash = IndexTxn.hashContent(content);
 
-    // Also ensure parent directory exists for target (so rename doesn't fail)
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    // Ensure parent directory exists for target (so rename doesn't fail)
+    const targetDir = path.dirname(targetPath);
+    await fs.mkdir(targetDir, { recursive: true });
 
     return {
       source: relativePath, // Relative to scratch dir

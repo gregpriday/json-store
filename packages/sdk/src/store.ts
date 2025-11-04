@@ -37,7 +37,7 @@ import { IndexManager } from "./indexes.js";
 import { canonicalize, safeParseJson } from "./format/canonical.js";
 import { DocumentReadError, FormatError, DocumentNotFoundError } from "./errors.js";
 import { HierarchyManager } from "./hierarchy/hierarchy-manager.js";
-import { validateMaterializedPath } from "./validation.js";
+import { validateMaterializedPath, validatePathDepth } from "./validation.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -1328,6 +1328,38 @@ class JSONStore implements Store {
     // Validate key and document
     validateKey(key);
     validateDocument(key, doc);
+
+    // If there's a parent, load its document to get the parent path
+    let parentPath: MaterializedPath | undefined;
+    if (parentKey) {
+      const parentDoc = await this.get(parentKey);
+      if (!parentDoc) {
+        throw new Error(`Parent document not found: ${parentKey.type}/${parentKey.id}`);
+      }
+      parentPath = (parentDoc as any).path as MaterializedPath | undefined;
+    }
+
+    // Compute the materialized path if slug is provided
+    if (slug) {
+      let computedPath: string;
+      if (parentPath) {
+        // Compute child path from parent path + slug
+        computedPath = `${parentPath}/${slug}`;
+      } else {
+        // Root level document
+        computedPath = `/${slug}`;
+      }
+
+      // Validate the path
+      const validatedPath = validateMaterializedPath(computedPath);
+
+      // Check depth limit
+      const maxDepth = this.#options.experimental?.maxDepth ?? 32;
+      validatePathDepth(validatedPath, maxDepth);
+
+      // Assign validated path to document
+      (doc as any).path = validatedPath;
+    }
 
     // Get old document for hierarchy updates
     const oldDoc = await this.get(key);
