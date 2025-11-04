@@ -167,36 +167,28 @@ describe("JSONStore cache integration", () => {
   });
 
   describe("Cache invalidation on writes", () => {
-    it("should invalidate cache entry on put (when implemented)", async () => {
+    it("should invalidate cache entry on put", async () => {
       const testDoc: Document = {
         type: "user",
         id: "123",
         name: "Original",
       };
 
-      // Create and cache document
-      const typeDir = path.join(tempDir, "user");
-      await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(path.join(typeDir, "123.json"), JSON.stringify(testDoc));
+      // Create and warm cache
+      await store.put({ type: "user", id: "123" }, testDoc);
+      const cached = await store.get({ type: "user", id: "123" });
+      expect(cached).toEqual(testDoc);
 
-      await store.get({ type: "user", id: "123" });
-
-      // Call put (will throw "Not implemented yet" but should still invalidate)
+      // Update document
       const updatedDoc: Document = {
         type: "user",
         id: "123",
         name: "Updated",
       };
 
-      try {
-        await store.put({ type: "user", id: "123" }, updatedDoc);
-      } catch (err) {
-        expect((err as Error).message).toBe("Not implemented yet");
-      }
+      await store.put({ type: "user", id: "123" }, updatedDoc);
 
-      // If we manually update the file, next get should read fresh
-      await fs.writeFile(path.join(typeDir, "123.json"), JSON.stringify(updatedDoc));
-
+      // Next get should return updated version (not stale cached version)
       const result = await store.get({ type: "user", id: "123" });
       expect(result).toEqual(updatedDoc);
     });
@@ -208,23 +200,14 @@ describe("JSONStore cache integration", () => {
         name: "Test",
       };
 
-      // Create and cache document
-      const typeDir = path.join(tempDir, "user");
-      const filePath = path.join(typeDir, "123.json");
-      await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(filePath, JSON.stringify(testDoc));
+      // Create and cache document using put
+      await store.put({ type: "user", id: "123" }, testDoc);
 
+      // Warm the cache
       await store.get({ type: "user", id: "123" });
 
-      // Call remove (will throw but should invalidate)
-      try {
-        await store.remove({ type: "user", id: "123" });
-      } catch (err) {
-        expect((err as Error).message).toBe("Not implemented yet");
-      }
-
-      // Manually delete file
-      await fs.unlink(filePath);
+      // Remove document
+      await store.remove({ type: "user", id: "123" });
 
       // Should return null (not cached version)
       const result = await store.get({ type: "user", id: "123" });
@@ -352,55 +335,55 @@ describe("JSONStore cache integration", () => {
   describe("Security: path traversal prevention", () => {
     it("should reject keys with .. in type", async () => {
       await expect(store.get({ type: "../etc", id: "passwd" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "type contains invalid characters"
       );
     });
 
     it("should reject keys with .. in id", async () => {
       await expect(store.get({ type: "user", id: "../../etc/passwd" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "id contains invalid characters"
       );
     });
 
     it("should reject keys with / in type", async () => {
       await expect(store.get({ type: "user/admin", id: "123" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "type contains invalid characters"
       );
     });
 
     it("should reject keys with / in id", async () => {
       await expect(store.get({ type: "user", id: "admin/123" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "id contains invalid characters"
       );
     });
 
     it("should reject keys with \\ in type", async () => {
       await expect(store.get({ type: "user\\admin", id: "123" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "type contains invalid characters"
       );
     });
 
     it("should reject keys with \\ in id", async () => {
       await expect(store.get({ type: "user", id: "admin\\123" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "id contains invalid characters"
       );
     });
 
     it("should reject absolute paths in type", async () => {
       await expect(store.get({ type: "/tmp/malicious", id: "123" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "type contains invalid characters"
       );
     });
 
     it("should reject absolute paths in id", async () => {
       await expect(store.get({ type: "user", id: "/tmp/malicious" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "id contains invalid characters"
       );
     });
 
     it("should reject Windows absolute paths in type", async () => {
       await expect(store.get({ type: "C:\\Windows", id: "123" })).rejects.toThrow(
-        "must not contain path traversal sequences or separators"
+        "type contains invalid characters"
       );
     });
 

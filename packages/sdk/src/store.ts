@@ -4,6 +4,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { promisify } from "node:util";
+import { execFile as execFileCallback } from "node:child_process";
 import type {
   Store,
   StoreOptions,
@@ -17,9 +19,11 @@ import type {
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
 import { validateDocument, validateName, validateKey } from "./validation.js";
-import { listFiles, atomicWrite } from "./io.js";
+import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
 import { evaluateQuery, matches, project } from "./query.js";
 import { stableStringify } from "./format.js";
+
+const execFile = promisify(execFileCallback);
 
 /**
  * Placeholder store implementation
@@ -52,44 +56,63 @@ class JSONStore implements Store {
     return this.#options;
   }
 
-  async put(key: Key, doc: Document, _opts?: WriteOptions): Promise<void> {
-    // Validate key
+  async put(key: Key, doc: Document, opts?: WriteOptions): Promise<void> {
+    // Validate key and document
     validateKey(key);
-
-    // Validate document matches key
     validateDocument(key, doc);
+
+    // Canonicalize document with stable formatting
+    const content = stableStringify(doc, this.#options.indent, this.#options.stableKeyOrder);
 
     // Get file path
     const filePath = this.getFilePath(key);
 
-    // Serialize document with stable key ordering
-    const content = stableStringify(doc, this.#options.indent, this.#options.stableKeyOrder);
+    // No-op write optimization: skip write if content unchanged
+    let unchanged = false;
+    try {
+      const prev = await readDocument(filePath);
+      unchanged = prev === content;
+    } catch (err: any) {
+      // File doesn't exist - proceed with write
+      // But rethrow other read errors (EPERM, EIO, etc.) to surface real failures
+      if (err.code !== "ENOENT") {
+        throw err;
+      }
+    }
 
-    // Write atomically
-    await atomicWrite(filePath, content);
+    // Perform atomic write if content changed
+    if (!unchanged) {
+      await atomicWrite(filePath, content);
+    }
 
-    // Invalidate cache
+    // Avoid serving stale data after concurrent writers; next read will repopulate safely.
     this.#cache.delete(filePath);
+
+    // Optional git commit (non-blocking, logs errors)
+    if (!unchanged && opts?.gitCommit) {
+      try {
+        await this.gitCommit(filePath, opts.gitCommit);
+      } catch (err: any) {
+        console.error("Git commit failed:", err.message);
+      }
+    }
   }
 
   async get(key: Key): Promise<Document | null> {
+    validateKey(key);
     const filePath = this.getFilePath(key);
 
     // Retry up to 3 times if file changes during read (TOCTOU guard)
     for (let attempt = 0; attempt < 3; attempt++) {
       // Check if file exists and get initial stats
-      let st1;
-      try {
-        st1 = await fs.stat(filePath);
-        if (!st1.isFile()) {
-          return null;
-        }
-      } catch (err: any) {
-        // Only treat ENOENT as "not found", surface other errors
-        if (err.code === "ENOENT" || err.code === "ENOTDIR") {
+      const st1 = await fs.stat(filePath).catch((err: any) => {
+        if (err?.code === "ENOENT") {
           return null;
         }
         throw err;
+      });
+      if (!st1 || !st1.isFile()) {
+        return null;
       }
 
       // Try cache first (with metadata validation)
@@ -98,12 +121,12 @@ class JSONStore implements Store {
         return cached;
       }
 
-      // Cache miss - read from disk
+      // Cache miss - read from disk using readDocument for consistent error handling
       let content: string;
       try {
-        content = await fs.readFile(filePath, "utf8");
+        content = await readDocument(filePath);
       } catch (err: any) {
-        // Handle concurrent deletion
+        // Handle concurrent deletion (DocumentNotFoundError has code ENOENT)
         if (err.code === "ENOENT") {
           return null;
         }
@@ -127,19 +150,13 @@ class JSONStore implements Store {
 
       // TOCTOU guard: re-check stats after reading
       // If file changed during read, retry (unless this is last attempt)
-      let st2;
-      try {
-        st2 = await fs.stat(filePath);
-      } catch (err: any) {
-        // File may have been deleted during read
-        if (err.code === "ENOENT") {
+      const st2 = await fs.stat(filePath).catch((err: any) => {
+        if (err?.code === "ENOENT") {
           return null;
         }
-        // Other errors should be surfaced
         throw err;
-      }
-
-      if (st2.mtimeMs === st1.mtimeMs && st2.size === st1.size) {
+      });
+      if (st2 && st2.mtimeMs === st1.mtimeMs && st2.size === st1.size) {
         // Stats match - safe to cache and return
         this.#cache.set(filePath, doc, st2);
         return doc;
@@ -157,26 +174,35 @@ class JSONStore implements Store {
     return null;
   }
 
-  async remove(key: Key, _opts?: RemoveOptions): Promise<void> {
-    // Full implementation will be added later
-    // For now, invalidate cache on remove
+  async remove(key: Key, opts?: RemoveOptions): Promise<void> {
+    validateKey(key);
     const filePath = this.getFilePath(key);
+
+    // Remove document (idempotent - no error if doesn't exist)
+    await removeDocument(filePath);
+
+    // Clear from cache
     this.#cache.delete(filePath);
-    throw new Error("Not implemented yet");
+
+    // Optional git commit (non-blocking, logs errors)
+    if (opts?.gitCommit) {
+      try {
+        await this.gitCommit(filePath, opts.gitCommit);
+      } catch (err: any) {
+        console.error("Git commit failed:", err.message);
+      }
+    }
   }
 
   async list(type: string): Promise<string[]> {
-    // Validate type name
     validateName(type, "type");
+    const typeDir = path.join(this.#options.root, type);
 
-    // Get directory path for this type
-    const typePath = path.join(this.#options.root, type);
+    // List all .json files
+    const files = await listFiles(typeDir, ".json");
 
-    // List all .json files in the directory
-    const files = await listFiles(typePath, ".json");
-
-    // Strip .json extension and return sorted IDs
-    return files.map((file) => file.slice(0, -5)).sort();
+    // Extract IDs (remove .json extension) and return sorted
+    return files.map((f) => path.basename(f, ".json")).sort();
   }
 
   async query(spec: QuerySpec): Promise<Document[]> {
@@ -441,22 +467,43 @@ class JSONStore implements Store {
 
     // Build path: root/type/id.json
     const filePath = path.join(this.#options.root, key.type, `${key.id}.json`);
-    // Normalize to absolute path
     const resolvedPath = path.resolve(filePath);
 
-    // Double-check: ensure resolved path is still under root using path.relative
-    // This works correctly regardless of whether root has trailing separator
-    const relativePath = path.relative(this.#options.root, resolvedPath);
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    // Double-check: ensure resolved path is still under root
+    const relative = path.relative(this.#options.root, resolvedPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error(
         `Path traversal detected: resolved path "${resolvedPath}" is outside root "${this.#options.root}"`
       );
     }
 
-    // Normalize to posix separators for cache key consistency
-    const normalizedPath = resolvedPath.replace(/\\/g, "/");
+    return resolvedPath.replace(/\\/g, "/");
+  }
 
-    return normalizedPath;
+  /**
+   * Commit a file change to git (optional, non-blocking)
+   * @param filePath - File path to commit
+   * @param message - Commit message
+   */
+  private async gitCommit(filePath: string, message: string): Promise<void> {
+    // Run git commands from the store root directory
+    const cwd = this.#options.root;
+
+    try {
+      // Add file to staging (handles both additions and removals)
+      await execFile("git", ["add", "-A", "--", filePath], { cwd });
+
+      // Commit only this file (--only ensures we don't commit other staged changes)
+      await execFile("git", ["commit", "--only", "-m", message, "--", filePath], { cwd });
+    } catch (err) {
+      // On failure, unstage the file to keep the index clean
+      try {
+        await execFile("git", ["reset", "--", filePath], { cwd });
+      } catch {
+        // Ignore reset errors
+      }
+      throw err;
+    }
   }
 }
 
