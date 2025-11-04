@@ -81,22 +81,41 @@ export function matches(doc: Document, filter: Filter): boolean {
     return true;
   }
 
-  // Logical operators
-  if ("$and" in filter) {
-    return (filter.$and as Filter[]).every((f) => matches(doc, f));
-  }
-  if ("$or" in filter) {
-    return (filter.$or as Filter[]).some((f) => matches(doc, f));
-  }
-  if ("$not" in filter) {
-    return !matches(doc, filter.$not as Filter);
+  for (const [key, value] of Object.entries(filter)) {
+    if (key === "$and") {
+      if (!Array.isArray(value)) {
+        throw new Error("$and operator requires an array of filters");
+      }
+      if (!value.every((f) => matches(doc, f))) {
+        return false;
+      }
+      continue;
+    }
+
+    if (key === "$or") {
+      if (!Array.isArray(value)) {
+        throw new Error("$or operator requires an array of filters");
+      }
+      if (!value.some((f) => matches(doc, f))) {
+        return false;
+      }
+      continue;
+    }
+
+    if (key === "$not") {
+      if (matches(doc, value as Filter)) {
+        return false;
+      }
+      continue;
+    }
+
+    const docValue = getPath(doc, key);
+    if (!matchField(docValue, value)) {
+      return false;
+    }
   }
 
-  // Field-level conditions
-  return Object.entries(filter).every(([key, value]) => {
-    const docValue = getPath(doc, key);
-    return matchField(docValue, value);
-  });
+  return true;
 }
 
 /**
@@ -219,4 +238,30 @@ export function paginate(docs: Document[], skip = 0, limit?: number): Document[]
   const start = skip;
   const end = limit !== undefined ? start + limit : undefined;
   return docs.slice(start, end);
+}
+
+/**
+ * Evaluate a complete query against an array of documents
+ * Pure orchestrator that composes filter → sort → paginate → project
+ * @param docs - Documents to evaluate
+ * @param spec - Query specification
+ * @returns Filtered, sorted, paginated, and projected documents
+ */
+export function evaluateQuery(
+  docs: Document[],
+  spec: { filter: Filter; sort?: Sort; skip?: number; limit?: number; projection?: Projection }
+): Document[] {
+  // 1. Filter
+  const filtered = docs.filter((d) => matches(d, spec.filter));
+
+  // 2. Sort (if specified)
+  if (spec.sort && Object.keys(spec.sort).length > 0) {
+    sortDocuments(filtered, spec.sort);
+  }
+
+  // 3. Paginate
+  const sliced = paginate(filtered, spec.skip ?? 0, spec.limit);
+
+  // 4. Project (last to minimize work and keep sorting stable)
+  return spec.projection ? sliced.map((d) => project(d, spec.projection)) : sliced;
 }
