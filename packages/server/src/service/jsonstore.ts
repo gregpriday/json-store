@@ -77,7 +77,7 @@ export class JsonStoreService {
       logger.warn("service.list.capped", {
         type,
         total: ids.length,
-        returned: MAX_LIST_IDS
+        returned: MAX_LIST_IDS,
       });
       return ids.slice(0, MAX_LIST_IDS);
     }

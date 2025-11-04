@@ -239,9 +239,9 @@ describe("Tool integration tests", () => {
         data: "x".repeat(2 * 1024 * 1024), // 2MB
       };
 
-      await expect(
-        putDoc({ type: "task", id: "large-1", doc: largeDoc })
-      ).rejects.toThrow(/too large/);
+      await expect(putDoc({ type: "task", id: "large-1", doc: largeDoc })).rejects.toThrow(
+        /too large/
+      );
     });
 
     it("should validate document has type and id fields", async () => {
@@ -255,13 +255,9 @@ describe("Tool integration tests", () => {
     });
 
     it("should enforce query limits", async () => {
-      await expect(
-        query({ filter: {}, limit: 1001 })
-      ).rejects.toThrow(/cannot exceed 1000/);
+      await expect(query({ filter: {}, limit: 1001 })).rejects.toThrow(/cannot exceed 1000/);
 
-      await expect(
-        query({ filter: {}, skip: 10001 })
-      ).rejects.toThrow(/cannot exceed 10000/);
+      await expect(query({ filter: {}, skip: 10001 })).rejects.toThrow(/cannot exceed 10000/);
     });
   });
 

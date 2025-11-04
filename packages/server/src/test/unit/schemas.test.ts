@@ -53,9 +53,7 @@ describe("KeySchema", () => {
 
 describe("DocumentSchema", () => {
   it("should accept valid documents", () => {
-    expect(() =>
-      DocumentSchema.parse({ type: "task", id: "123", title: "Test" })
-    ).not.toThrow();
+    expect(() => DocumentSchema.parse({ type: "task", id: "123", title: "Test" })).not.toThrow();
   });
 
   it("should reject documents without type", () => {
@@ -121,27 +119,23 @@ describe("QuerySpecSchema", () => {
   });
 
   it("should reject limit > 1000", () => {
-    expect(() =>
-      QuerySpecSchema.parse({ filter: { type: "task" }, limit: 1001 })
-    ).toThrow(/cannot exceed 1000/);
+    expect(() => QuerySpecSchema.parse({ filter: { type: "task" }, limit: 1001 })).toThrow(
+      /cannot exceed 1000/
+    );
   });
 
   it("should reject skip > 10000", () => {
-    expect(() =>
-      QuerySpecSchema.parse({ filter: { type: "task" }, skip: 10001 })
-    ).toThrow(/cannot exceed 10000/);
+    expect(() => QuerySpecSchema.parse({ filter: { type: "task" }, skip: 10001 })).toThrow(
+      /cannot exceed 10000/
+    );
   });
 
   it("should reject negative limit", () => {
-    expect(() =>
-      QuerySpecSchema.parse({ filter: { type: "task" }, limit: -1 })
-    ).toThrow();
+    expect(() => QuerySpecSchema.parse({ filter: { type: "task" }, limit: -1 })).toThrow();
   });
 
   it("should reject negative skip", () => {
-    expect(() =>
-      QuerySpecSchema.parse({ filter: { type: "task" }, skip: -1 })
-    ).toThrow();
+    expect(() => QuerySpecSchema.parse({ filter: { type: "task" }, skip: -1 })).toThrow();
   });
 
   it("should enforce limit/skip boundaries", () => {
@@ -299,9 +293,7 @@ describe("Tool input schemas", () => {
 
   describe("EnsureIndexInputSchema", () => {
     it("should accept valid input", () => {
-      expect(() =>
-        EnsureIndexInputSchema.parse({ type: "task", field: "status" })
-      ).not.toThrow();
+      expect(() => EnsureIndexInputSchema.parse({ type: "task", field: "status" })).not.toThrow();
       expect(() =>
         EnsureIndexInputSchema.parse({ type: "task", field: "nested.field" })
       ).not.toThrow();
@@ -318,15 +310,13 @@ describe("Tool input schemas", () => {
     });
 
     it("should reject path traversal in type", () => {
-      expect(() =>
-        EnsureIndexInputSchema.parse({ type: "../etc", field: "status" })
-      ).toThrow(/type/);
+      expect(() => EnsureIndexInputSchema.parse({ type: "../etc", field: "status" })).toThrow(
+        /type/
+      );
     });
 
     it("should reject path traversal in field", () => {
-      expect(() =>
-        EnsureIndexInputSchema.parse({ type: "task", field: "../path" })
-      ).toThrow();
+      expect(() => EnsureIndexInputSchema.parse({ type: "task", field: "../path" })).toThrow();
       expect(() =>
         EnsureIndexInputSchema.parse({ type: "task", field: "/leadingSlash" })
       ).toThrow();

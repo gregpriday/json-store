@@ -39,6 +39,12 @@ async function executeTool<T>(
 
     const handlerPromise = handler();
 
+    // Attach catch handler to prevent unhandled rejections if timeout fires first
+    // Any error after timeout will be consumed here instead of causing process termination
+    handlerPromise.catch(() => {
+      // Error already handled by timeout or will be handled by race winner
+    });
+
     // Race between handler and timeout
     const result = await Promise.race([handlerPromise, timeoutPromise]);
     success = true;

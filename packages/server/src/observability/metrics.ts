@@ -52,7 +52,10 @@ class MetricsRegistry {
   }
 
   // Get histogram stats (p50, p95, p99)
-  getHistogram(name: string, labels: Record<string, string> = {}): {
+  getHistogram(
+    name: string,
+    labels: Record<string, string> = {}
+  ): {
     count: number;
     sum: number;
     p50: number;

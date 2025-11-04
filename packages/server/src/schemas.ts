@@ -9,23 +9,31 @@ import { z } from "zod";
 const typePattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const idPattern = /^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/;
 
-const TypeStringSchema = z.string().min(1).superRefine((val, ctx) => {
-  if (!typePattern.test(val)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "type must start with alphanumeric and contain only lowercase letters, numbers, dots, underscores, and hyphens",
-    });
-  }
-});
+const TypeStringSchema = z
+  .string()
+  .min(1)
+  .superRefine((val, ctx) => {
+    if (!typePattern.test(val)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "type must start with alphanumeric and contain only lowercase letters, numbers, dots, underscores, and hyphens",
+      });
+    }
+  });
 
-const IdStringSchema = z.string().min(1).superRefine((val, ctx) => {
-  if (!idPattern.test(val)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "id must start with alphanumeric and contain only letters, numbers, dots, underscores, and hyphens",
-    });
-  }
-});
+const IdStringSchema = z
+  .string()
+  .min(1)
+  .superRefine((val, ctx) => {
+    if (!idPattern.test(val)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "id must start with alphanumeric and contain only letters, numbers, dots, underscores, and hyphens",
+      });
+    }
+  });
 
 // Key schema - type and id must be non-empty strings
 export const KeySchema = z.object({
@@ -60,18 +68,20 @@ export const CommitSchema = z
   .optional();
 
 // Projection schema - all values must be 0 or 1, and cannot mix both
-export const ProjectionSchema = z.record(z.string(), z.union([z.literal(0), z.literal(1)])).superRefine((proj, ctx) => {
-  const values = Object.values(proj);
-  if (values.length === 0) return;
-  const hasZero = values.includes(0);
-  const hasOne = values.includes(1);
-  if (hasZero && hasOne) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Projection cannot mix 0 and 1 values",
-    });
-  }
-});
+export const ProjectionSchema = z
+  .record(z.string(), z.union([z.literal(0), z.literal(1)]))
+  .superRefine((proj, ctx) => {
+    const values = Object.values(proj);
+    if (values.length === 0) return;
+    const hasZero = values.includes(0);
+    const hasOne = values.includes(1);
+    if (hasZero && hasOne) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Projection cannot mix 0 and 1 values",
+      });
+    }
+  });
 
 // Sort schema - all values must be 1 or -1
 export const SortSchema = z.record(z.string(), z.union([z.literal(1), z.literal(-1)]));
@@ -141,14 +151,18 @@ export const QueryInputSchema = QuerySpecSchema;
 
 export const EnsureIndexInputSchema = z.object({
   type: TypeStringSchema,
-  field: z.string().min(1).superRefine((val, ctx) => {
-    if (!/^[a-zA-Z0-9._-]+$/.test(val)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "field must be a valid field name (letters, numbers, dots, underscores, hyphens)",
-      });
-    }
-  }),
+  field: z
+    .string()
+    .min(1)
+    .superRefine((val, ctx) => {
+      if (!/^[a-zA-Z0-9._-]+$/.test(val)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "field must be a valid field name (letters, numbers, dots, underscores, hyphens)",
+        });
+      }
+    }),
 });
 
 // Tool output schemas (for documentation)
