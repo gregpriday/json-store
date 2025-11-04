@@ -8,6 +8,7 @@ import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import type { FormatTarget, Store } from "@jsonstore/sdk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -100,12 +101,68 @@ program
   .command("format")
   .description("Format documents to canonical representation")
   .option("--all", "Format all documents")
+  .option("--check", "Check formatting without writing (exit 1 if changes needed)")
+  .option("--dir <path>", "Data directory path", "./data")
   .argument("[type]", "Type to format")
   .argument("[id]", "Specific document ID to format")
-  .action(async (_type, _id, _options) => {
-    console.log("Formatting documents");
-    // Implementation will be added in later stages
-    console.log("Not implemented yet");
+  .action(async (type, id, options) => {
+    const { openStore } = await import("@jsonstore/sdk");
+
+    let store: Store | null = null;
+    let exitCode = 0;
+    let target: FormatTarget | undefined;
+
+    if (options.all) {
+      target = { all: true };
+    } else if (type && id) {
+      target = { type, id };
+    } else if (type) {
+      target = { type };
+    } else {
+      console.error("Error: Specify --all, <type>, or <type> <id>");
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      store = openStore({ root: options.dir });
+
+      const count = await store.format(target, {
+        dryRun: Boolean(options.check),
+        failFast: true,
+      });
+
+      if (options.check) {
+        if (count > 0) {
+          console.log(`✗ ${count} document(s) need formatting`);
+          exitCode = 1;
+        } else {
+          console.log("✓ All documents are properly formatted");
+        }
+      } else {
+        if (count > 0) {
+          console.log(`✓ Formatted ${count} document(s)`);
+        } else {
+          console.log("✓ All documents already canonical");
+        }
+      }
+    } catch (err: any) {
+      const message = err?.message ?? String(err);
+      console.error(`Error: ${message}`);
+      exitCode = 1;
+    } finally {
+      if (store) {
+        try {
+          await store.close();
+        } catch (closeErr: any) {
+          const closeMessage = closeErr?.message ?? String(closeErr);
+          console.error(`Error closing store: ${closeMessage}`);
+          exitCode = exitCode === 0 ? 1 : exitCode;
+        }
+      }
+    }
+
+    process.exitCode = exitCode;
   });
 
 // Ensure index command

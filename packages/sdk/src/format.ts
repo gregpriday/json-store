@@ -2,6 +2,9 @@
  * Deterministic JSON formatting utilities
  */
 
+import { canonicalize } from "./format/canonical.js";
+import type { CanonicalOptions } from "./types.js";
+
 export interface FormatOptions {
   indent?: number;
   order?: "alpha" | string[];
@@ -15,56 +18,13 @@ export interface FormatOptions {
  * @returns Formatted JSON string with trailing newline
  */
 export function stableStringify(obj: any, indent = 2, order: "alpha" | string[] = "alpha"): string {
-  const seen = new WeakSet();
-
-  const sorter = (a: string, b: string): number => {
-    if (order === "alpha") {
-      return a.localeCompare(b);
-    }
-    const aIndex = order.indexOf(a);
-    const bIndex = order.indexOf(b);
-
-    // If both in order array, use their positions
-    if (aIndex !== -1 && bIndex !== -1) {
-      return aIndex - bIndex;
-    }
-    // If only a is in order, it comes first
-    if (aIndex !== -1) return -1;
-    // If only b is in order, it comes first
-    if (bIndex !== -1) return 1;
-    // Both not in order array, fallback to alphabetical
-    return a.localeCompare(b);
+  const options: CanonicalOptions = {
+    indent,
+    stableKeyOrder: order === "alpha" ? true : order,
+    eol: "LF",
+    trailingNewline: true,
   };
-
-  const normalize = (value: any): any => {
-    if (value && typeof value === "object") {
-      // Detect cycles
-      if (seen.has(value)) {
-        throw new Error("Circular reference detected in object");
-      }
-      seen.add(value);
-
-      try {
-        // Arrays: preserve order but normalize contents
-        if (Array.isArray(value)) {
-          return value.map(normalize);
-        }
-
-        // Objects: sort keys and normalize values
-        const keys = Object.keys(value).sort(sorter);
-        const out: Record<string, any> = {};
-        for (const k of keys) {
-          out[k] = normalize(value[k]);
-        }
-        return out;
-      } finally {
-        seen.delete(value);
-      }
-    }
-    return value;
-  };
-
-  return JSON.stringify(normalize(obj), null, indent) + "\n";
+  return canonicalize(obj, options);
 }
 
 /**

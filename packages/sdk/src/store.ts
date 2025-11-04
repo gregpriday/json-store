@@ -3,6 +3,8 @@
  */
 
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
+import type { Stats } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { execFile as execFileCallback } from "node:child_process";
@@ -16,12 +18,16 @@ import type {
   RemoveOptions,
   StoreStats,
   FormatTarget,
+  FormatOptions,
+  CanonicalOptions,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
 import { validateDocument, validateName, validateKey } from "./validation.js";
 import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
 import { evaluateQuery, matches, project } from "./query.js";
 import { stableStringify } from "./format.js";
+import { canonicalize, safeParseJson } from "./format/canonical.js";
+import { DocumentReadError, FormatError, DocumentNotFoundError } from "./errors.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -32,24 +38,42 @@ const execFile = promisify(execFileCallback);
 class JSONStore implements Store {
   #options: Required<StoreOptions>;
   #cache: DocumentCache;
+  #rootPath: string;
 
   constructor(options: StoreOptions) {
     // Resolve root to absolute path for consistent cache keys
     const resolvedRoot = path.resolve(options.root);
 
+    // Canonicalize root path to prevent symlink traversal
+    let canonicalRoot = resolvedRoot;
+    try {
+      canonicalRoot = fsSync.realpathSync(resolvedRoot);
+    } catch (err: any) {
+      if (err.code !== "ENOENT") {
+        throw err;
+      }
+      // Root doesn't exist yet - use resolved path
+    }
+
+    // Clamp format concurrency to safe range (1-64)
+    const formatConcurrency = Math.max(1, Math.min(64, options.formatConcurrency ?? 16));
+
     this.#options = {
-      root: resolvedRoot,
+      root: canonicalRoot,
       indent: options.indent ?? 2,
       stableKeyOrder: options.stableKeyOrder ?? "alpha",
       watch: options.watch ?? false,
+      formatConcurrency,
     };
 
     // Initialize cache with default settings
     // JSONSTORE_CACHE_SIZE=0 disables caching
     this.#cache = new DocumentCache({
       maxSize: 10000,
-      root: resolvedRoot,
+      root: canonicalRoot,
     });
+
+    this.#rootPath = canonicalRoot;
   }
 
   get options(): Required<StoreOptions> {
@@ -196,7 +220,10 @@ class JSONStore implements Store {
 
   async list(type: string): Promise<string[]> {
     validateName(type, "type");
-    const typeDir = path.join(this.#options.root, type);
+    const typeDir = path.join(this.#rootPath, type);
+
+    // Ensure type directory doesn't contain symlinks
+    this.assertNoSymbolicLinks(typeDir);
 
     // List all .json files
     const files = await listFiles(typeDir, ".json");
@@ -227,11 +254,9 @@ class JSONStore implements Store {
     }
 
     // Check for fast path: single type, simple ID-based filter, no sort/projection
-    let _usedFastPath = false;
     if (spec.type && !spec.sort && !spec.projection && this.canUseFastPath(spec.filter)) {
       const ids = this.extractIdsFromFilter(spec.filter);
       if (ids) {
-        _usedFastPath = true;
         const docs: Document[] = [];
 
         for (const id of ids) {
@@ -365,32 +390,300 @@ class JSONStore implements Store {
     throw new Error("Not implemented yet");
   }
 
-  async format(_target?: FormatTarget): Promise<void> {
-    throw new Error("Not implemented yet");
+  async format(target?: FormatTarget, options?: FormatOptions): Promise<number> {
+    const dryRun = options?.dryRun ?? false;
+    const failFast = options?.failFast ?? false;
+    let reformattedCount = 0;
+    const errors: Array<{ file: string; error: string }> = [];
+
+    // Build canonical options from store settings
+    const canonicalOpts: CanonicalOptions = {
+      indent: this.#options.indent,
+      stableKeyOrder: this.#options.stableKeyOrder === "alpha" ? true : this.#options.stableKeyOrder,
+      eol: "LF",
+      trailingNewline: true,
+    };
+
+    if (!target || "all" in target) {
+      // Format all documents in all types
+      const types = await this.getAllTypes();
+      for (const type of types) {
+        const count = await this.formatType(type, canonicalOpts, dryRun, failFast, errors);
+        reformattedCount += count;
+      }
+    } else if (target.id) {
+      // Format specific document
+      const formatted = await this.formatDocument(
+        target.type,
+        target.id,
+        canonicalOpts,
+        dryRun,
+        failFast,
+        errors
+      );
+      if (formatted) reformattedCount++;
+    } else {
+      // Format all documents of a type
+      const count = await this.formatType(target.type, canonicalOpts, dryRun, failFast, errors);
+      reformattedCount += count;
+    }
+
+    // Log errors if any occurred
+    if (errors.length > 0 && process.env.JSONSTORE_DEBUG) {
+      console.error(`[JSONSTORE_DEBUG] format: ${errors.length} errors occurred:`);
+      for (const { file, error } of errors) {
+        console.error(`  ${file}: ${error}`);
+      }
+    }
+
+    return reformattedCount;
   }
 
-  async stats(_type?: string): Promise<StoreStats> {
-    throw new Error("Not implemented yet");
-  }
+  private async readSnapshot(
+    filePath: string
+  ): Promise<{ content: string; normalized: string; stats: Stats } | null> {
+    let handle: fs.FileHandle | null = null;
 
-  async close(): Promise<void> {
-    // Cleanup resources (file watchers, cache, etc.)
-    this.#cache.clear();
+    try {
+      handle = await fs.open(filePath, "r");
+    } catch (err: any) {
+      if (err?.code === "ENOENT") {
+        return null;
+      }
+      throw new DocumentReadError(filePath, { cause: err });
+    }
+
+    try {
+      const stats = await handle.stat();
+      const content = await handle.readFile({ encoding: "utf-8" });
+      return {
+        content,
+        normalized: content.replace(/\r?\n/g, "\n"),
+        stats,
+      };
+    } catch (err: any) {
+      if (err?.code === "ENOENT") {
+        return null;
+      }
+      throw new DocumentReadError(filePath, { cause: err });
+    } finally {
+      if (handle) {
+        try {
+          await handle.close();
+        } catch {
+          // Ignore close errors; the descriptor may already be closed
+        }
+      }
+    }
   }
 
   /**
-   * List all types (directories) in the store
+   * Format a single document
+   * @returns true if document was reformatted, false if already canonical or error occurred
+   */
+  private async formatDocument(
+    type: string,
+    id: string,
+    canonicalOpts: CanonicalOptions,
+    dryRun: boolean,
+    failFast: boolean,
+    errors: Array<{ file: string; error: string }>
+  ): Promise<boolean> {
+    const filePath = this.getFilePath({ type, id });
+
+    try {
+      // Take a consistent snapshot of the current file contents and metadata
+      const snapshot = await this.readSnapshot(filePath);
+      if (!snapshot) {
+        throw new DocumentNotFoundError(filePath);
+      }
+
+      const current = snapshot.content;
+      const normalizedCurrent = snapshot.normalized;
+
+      // Parse JSON with safe error handling
+      const parseResult = safeParseJson(current);
+      if (!parseResult.success) {
+        const error = `Invalid JSON: ${parseResult.error}`;
+        errors.push({ file: filePath, error });
+        if (failFast) {
+          throw new FormatError(filePath, { cause: new Error(error) });
+        }
+        if (process.env.JSONSTORE_DEBUG) {
+          console.warn(`[JSONSTORE_DEBUG] format: skipping ${filePath}: ${error}`);
+        }
+        return false;
+      }
+
+      const doc = parseResult.data as Document;
+
+      // Generate canonical representation
+      const canonical = canonicalize(doc, canonicalOpts);
+
+      // Check if formatting would change anything (byte-stable check)
+      if (normalizedCurrent === canonical) {
+        // Already canonical - no-op
+        if (process.env.JSONSTORE_DEBUG) {
+          console.error(`[JSONSTORE_DEBUG] format: ${filePath} already canonical`);
+        }
+        return false;
+      }
+
+      // Content differs - write canonical version (unless dry run)
+      if (!dryRun) {
+        const latest = await this.readSnapshot(filePath);
+        if (!latest) {
+          const error = "Document was removed during formatting";
+          this.#cache.delete(filePath);
+          if (failFast) {
+            throw new FormatError(filePath, { cause: new Error(error) });
+          }
+          errors.push({ file: filePath, error });
+          if (process.env.JSONSTORE_DEBUG) {
+            console.warn(`[JSONSTORE_DEBUG] format: ${filePath} vanished before write`);
+          }
+          return false;
+        }
+
+        if (latest.normalized !== normalizedCurrent) {
+          if (latest.normalized === canonical) {
+            // Another writer already canonicalized the document; refresh cache and skip
+            this.#cache.set(filePath, doc, latest.stats);
+            if (process.env.JSONSTORE_DEBUG) {
+              console.error(`[JSONSTORE_DEBUG] format: ${filePath} already canonical (concurrent)`);
+            }
+            return false;
+          }
+
+          const error =
+            "Concurrent modification detected while formatting; skipping to avoid overwriting changes";
+          this.#cache.delete(filePath);
+          if (failFast) {
+            throw new FormatError(filePath, { cause: new Error(error) });
+          }
+          errors.push({ file: filePath, error });
+          if (process.env.JSONSTORE_DEBUG) {
+            console.warn(`[JSONSTORE_DEBUG] format: ${filePath} changed concurrently, skipping`);
+          }
+          return false;
+        }
+
+        await atomicWrite(filePath, canonical);
+
+        // Update cache with new stats
+        const stats = await fs.stat(filePath);
+        this.#cache.set(filePath, doc, stats);
+      }
+
+      if (process.env.JSONSTORE_DEBUG) {
+        console.error(
+          `[JSONSTORE_DEBUG] format: ${dryRun ? "would reformat" : "reformatted"} ${filePath}`
+        );
+      }
+
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      errors.push({ file: filePath, error: errorMsg });
+
+      if (failFast) {
+        throw err;
+      }
+
+      if (process.env.JSONSTORE_DEBUG) {
+        console.warn(`[JSONSTORE_DEBUG] format: error formatting ${filePath}: ${errorMsg}`);
+      }
+
+      return false;
+    }
+  }
+
+  /**
+   * Format all documents of a type with bounded concurrency
+   * @returns Number of documents reformatted
+   */
+  private async formatType(
+    type: string,
+    canonicalOpts: CanonicalOptions,
+    dryRun: boolean,
+    failFast: boolean,
+    errors: Array<{ file: string; error: string }>
+  ): Promise<number> {
+    validateName(type, "type");
+
+    // Get all document IDs
+    let ids: string[];
+    try {
+      ids = await this.list(type);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const typePath = path.join(this.#rootPath, type);
+      errors.push({ file: typePath, error: errorMsg });
+
+      if (process.env.JSONSTORE_DEBUG) {
+        console.warn(`[JSONSTORE_DEBUG] format: failed to list documents in ${typePath}: ${errorMsg}`);
+      }
+
+      if (failFast) {
+        throw err;
+      }
+
+      return 0;
+    }
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    let reformattedCount = 0;
+    const concurrency = this.#options.formatConcurrency;
+
+    // Process documents with bounded concurrency
+    const queue = [...ids];
+    const workers: Promise<void>[] = [];
+
+    for (let i = 0; i < Math.min(concurrency, queue.length); i++) {
+      workers.push(
+        (async () => {
+          while (queue.length > 0) {
+            const id = queue.shift();
+            if (!id) break;
+
+            const formatted = await this.formatDocument(
+              type,
+              id,
+              canonicalOpts,
+              dryRun,
+              failFast,
+              errors
+            );
+            if (formatted) {
+              reformattedCount++;
+            }
+          }
+        })()
+      );
+    }
+
+    await Promise.all(workers);
+    return reformattedCount;
+  }
+
+  /**
+   * Get all types (directories) in the store
    * @returns Array of type names
    */
-  private async listTypes(): Promise<string[]> {
+  private async getAllTypes(): Promise<string[]> {
     try {
-      const entries = await fs.readdir(this.#options.root, { withFileTypes: true });
+      const entries = await fs.readdir(this.#rootPath, { withFileTypes: true });
 
-      // Filter to directories only, exclude _meta and hidden directories
+      // Filter to directories only, exclude _meta, _indexes, hidden directories, and symlinks
       const types = entries
         .filter(
           (entry) =>
-            entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith(".")
+            entry.isDirectory() &&
+            !entry.isSymbolicLink() &&
+            !entry.name.startsWith("_") &&
+            !entry.name.startsWith(".")
         )
         .map((entry) => entry.name)
         .filter((name) => {
@@ -414,13 +707,64 @@ class JSONStore implements Store {
   }
 
   /**
+   * Assert that a path contains no symbolic links
+   * @param targetPath - Path to check
+   * @throws {Error} If path contains symbolic links or escapes root
+   */
+  private assertNoSymbolicLinks(targetPath: string): void {
+    const normalized = path.resolve(targetPath);
+    const relative = path.relative(this.#rootPath, normalized);
+
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(
+        `Path traversal detected: resolved path "${normalized}" is outside root "${this.#rootPath}"`
+      );
+    }
+
+    // Root itself is OK
+    if (!relative) {
+      return;
+    }
+
+    // Check each path component for symlinks
+    const segments = relative.split(path.sep);
+    let current = this.#rootPath;
+    for (const segment of segments) {
+      current = path.join(current, segment);
+      try {
+        const stats = fsSync.lstatSync(current);
+        if (stats.isSymbolicLink()) {
+          throw new Error(
+            `Path traversal detected: component "${current}" is a symbolic link under root "${this.#rootPath}"`
+          );
+        }
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          // Path doesn't exist yet - that's OK
+          return;
+        }
+        throw err;
+      }
+    }
+  }
+
+  async stats(_type?: string): Promise<StoreStats> {
+    throw new Error("Not implemented yet");
+  }
+
+  async close(): Promise<void> {
+    // Cleanup resources (file watchers, cache, etc.)
+    this.#cache.clear();
+  }
+
+  /**
    * Scan documents matching a query spec
    * @param spec - Query specification
    * @yields Documents from disk/cache
    */
   private async *scan(spec: QuerySpec): AsyncIterable<Document> {
     // Determine which types to scan
-    const types = spec.type ? [spec.type] : await this.listTypes();
+    const types = spec.type ? [spec.type] : await this.getAllTypes();
 
     // Scan each type
     for (const type of types) {
@@ -466,16 +810,19 @@ class JSONStore implements Store {
     }
 
     // Build path: root/type/id.json
-    const filePath = path.join(this.#options.root, key.type, `${key.id}.json`);
+    const filePath = path.join(this.#rootPath, key.type, `${key.id}.json`);
     const resolvedPath = path.resolve(filePath);
 
     // Double-check: ensure resolved path is still under root
-    const relative = path.relative(this.#options.root, resolvedPath);
+    const relative = path.relative(this.#rootPath, resolvedPath);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error(
-        `Path traversal detected: resolved path "${resolvedPath}" is outside root "${this.#options.root}"`
+        `Path traversal detected: resolved path "${resolvedPath}" is outside root "${this.#rootPath}"`
       );
     }
+
+    // Ensure no symbolic links in the path
+    this.assertNoSymbolicLinks(resolvedPath);
 
     return resolvedPath.replace(/\\/g, "/");
   }

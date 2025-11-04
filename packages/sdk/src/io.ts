@@ -195,8 +195,10 @@ export async function listFiles(dirPath: string, extension?: string): Promise<st
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-    // Filter to files only
-    let files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+    // Filter to files only, exclude symlinks
+    let files = entries
+      .filter((entry) => entry.isFile() && !entry.isSymbolicLink())
+      .map((entry) => entry.name);
 
     // Filter by extension if provided
     if (extension) {

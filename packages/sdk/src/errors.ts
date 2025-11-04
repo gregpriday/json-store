@@ -88,3 +88,14 @@ export class ListFilesError extends JSONStoreError {
     super(`Failed to list files in directory: ${dirPath}`, options);
   }
 }
+
+/**
+ * Thrown when a document formatting operation fails
+ */
+export class FormatError extends JSONStoreError {
+  readonly code = "FORMAT_ERROR";
+
+  constructor(filePath: string, options?: ErrorOptions) {
+    super(`Failed to format document: ${filePath}`, options);
+  }
+}

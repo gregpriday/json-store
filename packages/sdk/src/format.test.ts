@@ -39,6 +39,13 @@ describe("stableStringify", () => {
     expect(lines[2]).toContain('"id"');
     expect(lines[3]).toContain('"title"');
   });
+
+  it("should sort unicode keys using code point order", () => {
+    const obj = { ä: 1, z: 2, a: 3 };
+    const result = stableStringify(obj);
+    const parsed = JSON.parse(result);
+    expect(Object.keys(parsed)).toEqual(["a", "z", "ä"]);
+  });
 });
 
 describe("jsonEqual", () => {
