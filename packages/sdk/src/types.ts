@@ -52,10 +52,7 @@ export type FieldOperator =
 /**
  * Logical operators for combining conditions
  */
-export type LogicalOperator =
-  | { $and: Filter[] }
-  | { $or: Filter[] }
-  | { $not: Filter };
+export type LogicalOperator = { $and: Filter[] } | { $or: Filter[] } | { $not: Filter };
 
 /**
  * Filter object for Mango queries
@@ -122,9 +119,7 @@ export interface StoreStats {
 /**
  * Target for format operation
  */
-export type FormatTarget =
-  | { all: true }
-  | { type: string; id?: string };
+export type FormatTarget = { all: true } | { type: string; id?: string };
 
 /**
  * Main store interface

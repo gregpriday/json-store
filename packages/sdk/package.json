@@ -21,7 +21,13 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["json", "database", "git", "mango", "query"],
+  "keywords": [
+    "json",
+    "database",
+    "git",
+    "mango",
+    "query"
+  ],
   "license": "MIT",
   "dependencies": {},
   "devDependencies": {

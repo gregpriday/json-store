@@ -23,7 +23,7 @@ export function validateName(value: string, label: "type" | "id"): void {
   if (!VALID_NAME_PATTERN.test(value)) {
     throw new Error(
       `${label} contains invalid characters: "${value}". ` +
-      `Only alphanumeric, underscore, dash, and dot are allowed.`
+        `Only alphanumeric, underscore, dash, and dot are allowed.`
     );
   }
 
@@ -58,15 +58,11 @@ export function validateDocument(key: Key, doc: Document): void {
   }
 
   if (doc.type !== key.type) {
-    throw new Error(
-      `Document type "${doc.type}" does not match key type "${key.type}"`
-    );
+    throw new Error(`Document type "${doc.type}" does not match key type "${key.type}"`);
   }
 
   if (doc.id !== key.id) {
-    throw new Error(
-      `Document id "${doc.id}" does not match key id "${key.id}"`
-    );
+    throw new Error(`Document id "${doc.id}" does not match key id "${key.id}"`);
   }
 }
 

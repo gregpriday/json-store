@@ -18,20 +18,21 @@ We use **Conventional Commits** for all commit messages.
 
 ### Types
 
-| Type | Purpose | SemVer Impact |
-|------|---------|---------------|
-| `feat` | New feature | MINOR (0.1.0 → 0.2.0) |
-| `fix` | Bug fix | PATCH (0.1.0 → 0.1.1) |
-| `refactor` | Code change (no bug fix or feature) | None |
-| `perf` | Performance improvement | PATCH |
-| `test` | Add/update tests | None |
-| `docs` | Documentation only | None |
-| `chore` | Maintenance (deps, build, etc.) | None |
-| `style` | Code style/formatting | None |
+| Type       | Purpose                             | SemVer Impact         |
+| ---------- | ----------------------------------- | --------------------- |
+| `feat`     | New feature                         | MINOR (0.1.0 → 0.2.0) |
+| `fix`      | Bug fix                             | PATCH (0.1.0 → 0.1.1) |
+| `refactor` | Code change (no bug fix or feature) | None                  |
+| `perf`     | Performance improvement             | PATCH                 |
+| `test`     | Add/update tests                    | None                  |
+| `docs`     | Documentation only                  | None                  |
+| `chore`    | Maintenance (deps, build, etc.)     | None                  |
+| `style`    | Code style/formatting               | None                  |
 
 ### Scopes
 
 Common scopes for JSON Store:
+
 - `sdk` - SDK package
 - `cli` - CLI package
 - `server` - MCP server package
@@ -225,6 +226,7 @@ pick mno7890 test(io): add atomic write tests
 ```
 
 Becomes:
+
 ```
 feat(io): add temp file generation
 feat(io): implement fsync wrapper
@@ -243,18 +245,22 @@ feat(sdk): implement atomic file I/O operations
 
 ```markdown
 ## Summary
+
 Brief description of what this PR does.
 
 ## Changes
+
 - Bullet point list of changes
 - Keep it concise
 
 ## Testing
+
 - [ ] Unit tests added
 - [ ] Integration tests added
 - [ ] Manual testing completed
 
 ## Related Issues
+
 Closes #1
 ```
 

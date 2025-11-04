@@ -3,7 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "JSON-first, Git-backed, file-based data store with Mango query language",
-  "keywords": ["json", "database", "git", "mango", "query", "mcp"],
+  "keywords": [
+    "json",
+    "database",
+    "git",
+    "mango",
+    "query",
+    "mcp"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/json-store.git"

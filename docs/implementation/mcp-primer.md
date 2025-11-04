@@ -8,17 +8,18 @@ This guide explains MCP concepts and how to implement the JSON Store MCP server.
 
 ### Key Concepts
 
-| Concept | Description | JSON Store Example |
-|---------|-------------|-------------------|
-| **Server** | Exposes tools to AI agents | JSON Store MCP server |
-| **Client** | AI agent that uses tools | Claude Desktop, custom agent |
-| **Tool** | A function the agent can call | `get_doc`, `put_doc`, `query` |
-| **Transport** | How client/server communicate | stdio (stdin/stdout) |
-| **Schema** | Defines tool inputs/outputs | Zod schemas for validation |
+| Concept       | Description                   | JSON Store Example            |
+| ------------- | ----------------------------- | ----------------------------- |
+| **Server**    | Exposes tools to AI agents    | JSON Store MCP server         |
+| **Client**    | AI agent that uses tools      | Claude Desktop, custom agent  |
+| **Tool**      | A function the agent can call | `get_doc`, `put_doc`, `query` |
+| **Transport** | How client/server communicate | stdio (stdin/stdout)          |
+| **Schema**    | Defines tool inputs/outputs   | Zod schemas for validation    |
 
 ## Why MCP for JSON Store?
 
 MCP allows AI agents to:
+
 - **Create documents**: "Create a task for fixing the login bug"
 - **Query data**: "Show me all high-priority open tasks"
 - **Update documents**: "Mark task-123 as complete"
@@ -138,12 +139,12 @@ List all document IDs for a type.
 ```typescript
 // Input
 {
-  type: "task"
+  type: "task";
 }
 
 // Output
 {
-  ids: ["task-1", "task-2", "task-3"]
+  ids: ["task-1", "task-2", "task-3"];
 }
 ```
 
@@ -200,14 +201,14 @@ pnpm add @modelcontextprotocol/sdk zod
 ### 2. Create Server
 
 ```typescript
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 
 // Create server instance
 const server = new McpServer({
-  name: 'jsonstore-mcp',
-  version: '0.1.0'
+  name: "jsonstore-mcp",
+  version: "0.1.0",
 });
 ```
 
@@ -216,30 +217,34 @@ const server = new McpServer({
 ```typescript
 // Define input schema with Zod
 const getDocSchema = z.object({
-  type: z.string().describe('Entity type'),
-  id: z.string().describe('Entity ID')
+  type: z.string().describe("Entity type"),
+  id: z.string().describe("Entity ID"),
 });
 
 // Register tool
 server.registerTool(
-  'get_doc',                    // Tool name
+  "get_doc", // Tool name
   {
-    title: 'Get Document',
-    description: 'Retrieve a document by type and ID',
-    inputSchema: getDocSchema,  // Zod schema for validation
+    title: "Get Document",
+    description: "Retrieve a document by type and ID",
+    inputSchema: getDocSchema, // Zod schema for validation
     outputSchema: z.object({
-      doc: z.record(z.any()).nullable()
-    })
+      doc: z.record(z.any()).nullable(),
+    }),
   },
-  async ({ type, id }) => {     // Handler function
+  async ({ type, id }) => {
+    // Handler function
     const doc = await store.get({ type, id });
 
     return {
-      content: [{              // Human-readable text
-        type: 'text',
-        text: doc ? JSON.stringify(doc, null, 2) : 'Document not found'
-      }],
-      structuredContent: { doc }  // Structured data for agent
+      content: [
+        {
+          // Human-readable text
+          type: "text",
+          text: doc ? JSON.stringify(doc, null, 2) : "Document not found",
+        },
+      ],
+      structuredContent: { doc }, // Structured data for agent
     };
   }
 );
@@ -253,7 +258,7 @@ async function main() {
   await server.connect(transport);
 
   // Log to stderr (not stdout!)
-  console.error('JSON Store MCP server running on stdio');
+  console.error("JSON Store MCP server running on stdio");
 }
 
 main();
@@ -339,11 +344,13 @@ Restart Claude Desktop. The tools will appear in the tool panel.
 **User**: "Create a task to fix the login bug with high priority"
 
 **Agent thinks**:
+
 ```
 I'll use the put_doc tool to create a new task document.
 ```
 
 **Agent calls**:
+
 ```json
 {
   "tool": "put_doc",
@@ -364,6 +371,7 @@ I'll use the put_doc tool to create a new task document.
 ```
 
 **Server responds**:
+
 ```json
 {
   "ok": true
@@ -377,16 +385,14 @@ I'll use the put_doc tool to create a new task document.
 **User**: "Show me all high-priority open tasks"
 
 **Agent calls**:
+
 ```json
 {
   "tool": "query",
   "arguments": {
     "type": "task",
     "filter": {
-      "$and": [
-        { "status": { "$eq": "open" } },
-        { "priority": { "$gte": 7 } }
-      ]
+      "$and": [{ "status": { "$eq": "open" } }, { "priority": { "$gte": 7 } }]
     },
     "sort": { "priority": -1 }
   }
@@ -394,6 +400,7 @@ I'll use the put_doc tool to create a new task document.
 ```
 
 **Server responds**:
+
 ```json
 {
   "results": [
@@ -416,6 +423,7 @@ I'll use the put_doc tool to create a new task document.
 ```
 
 **Agent says**: "Found 2 high-priority open tasks:
+
 1. Fix login bug (priority 8)
 2. Apply security patch (priority 7)"
 
@@ -425,12 +433,12 @@ I'll use the put_doc tool to create a new task document.
 
 ```typescript
 server.registerTool(
-  'get_doc',
+  "get_doc",
   {
     inputSchema: z.object({
-      type: z.string().min(1),  // Will throw if empty
-      id: z.string().min(1)
-    })
+      type: z.string().min(1), // Will throw if empty
+      id: z.string().min(1),
+    }),
   },
   async (args) => {
     // Zod validates automatically before this runs
@@ -443,12 +451,16 @@ server.registerTool(
 
 ```typescript
 server.registerTool(
-  'get_doc',
-  { /* ... */ },
+  "get_doc",
+  {
+    /* ... */
+  },
   async ({ type, id }) => {
     try {
       const doc = await store.get({ type, id });
-      return { /* success */ };
+      return {
+        /* success */
+      };
     } catch (error) {
       // Error is caught and returned to agent
       throw new Error(`Failed to get document: ${error.message}`);
@@ -463,11 +475,11 @@ server.registerTool(
 
 ```typescript
 // ✅ Correct: Log to stderr
-console.error('Server started');
+console.error("Server started");
 console.error(`Tool called: ${toolName}`);
 
 // ❌ Wrong: Log to stdout (breaks protocol!)
-console.log('Server started');  // NO!
+console.log("Server started"); // NO!
 ```
 
 ### 2. Schema Validation
@@ -476,23 +488,23 @@ console.log('Server started');  // NO!
 // ✅ Use Zod for validation
 const schema = z.object({
   type: z.string().min(1),
-  id: z.string().regex(/^[A-Za-z0-9_.-]+$/)  // Validate format
+  id: z.string().regex(/^[A-Za-z0-9_.-]+$/), // Validate format
 });
 
 // ❌ Don't validate manually
-if (!type || !id) throw new Error('...');  // Let Zod handle this
+if (!type || !id) throw new Error("..."); // Let Zod handle this
 ```
 
 ### 3. Error Messages
 
 ```typescript
 // ✅ Clear, actionable errors
-throw new Error('Document not found: task/abc123');
-throw new Error('Invalid type: must match [A-Za-z0-9_.-]+');
+throw new Error("Document not found: task/abc123");
+throw new Error("Invalid type: must match [A-Za-z0-9_.-]+");
 
 // ❌ Vague errors
-throw new Error('Error');
-throw new Error('Something went wrong');
+throw new Error("Error");
+throw new Error("Something went wrong");
 ```
 
 ### 4. Response Format
@@ -500,12 +512,12 @@ throw new Error('Something went wrong');
 ```typescript
 // ✅ Always provide both text and structured content
 return {
-  content: [{ type: 'text', text: 'Document created successfully' }],
-  structuredContent: { ok: true, id: 'task-1' }
+  content: [{ type: "text", text: "Document created successfully" }],
+  structuredContent: { ok: true, id: "task-1" },
 };
 
 // ❌ Missing content
-return { structuredContent: { ok: true } };  // Agent can't explain to user
+return { structuredContent: { ok: true } }; // Agent can't explain to user
 ```
 
 ## Debugging
@@ -522,6 +534,7 @@ console.error(`[DEBUG] Result: ${JSON.stringify(result)}`);
 ### Check Server Logs
 
 Claude Desktop logs MCP servers to:
+
 ```
 ~/Library/Logs/Claude/mcp*.log
 ```
@@ -531,6 +544,7 @@ Claude Desktop logs MCP servers to:
 ### Issue: Server not appearing in Claude Desktop
 
 **Solution**:
+
 1. Check config path is absolute
 2. Check command is correct (node)
 3. Restart Claude Desktop
