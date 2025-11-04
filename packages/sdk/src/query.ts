@@ -247,7 +247,10 @@ export function paginate(docs: Document[], skip = 0, limit?: number): Document[]
  * @param spec - Query specification
  * @returns Filtered, sorted, paginated, and projected documents
  */
-export function evaluateQuery(docs: Document[], spec: { filter: Filter; sort?: Sort; skip?: number; limit?: number; projection?: Projection }): Document[] {
+export function evaluateQuery(
+  docs: Document[],
+  spec: { filter: Filter; sort?: Sort; skip?: number; limit?: number; projection?: Projection }
+): Document[] {
   // 1. Filter
   const filtered = docs.filter((d) => matches(d, spec.filter));
 

@@ -201,16 +201,11 @@ class JSONStore implements Store {
     }
 
     // Check for fast path: single type, simple ID-based filter, no sort/projection
-    let usedFastPath = false;
-    if (
-      spec.type &&
-      !spec.sort &&
-      !spec.projection &&
-      this.canUseFastPath(spec.filter)
-    ) {
+    let _usedFastPath = false;
+    if (spec.type && !spec.sort && !spec.projection && this.canUseFastPath(spec.filter)) {
       const ids = this.extractIdsFromFilter(spec.filter);
       if (ids) {
-        usedFastPath = true;
+        _usedFastPath = true;
         const docs: Document[] = [];
 
         for (const id of ids) {
@@ -225,7 +220,8 @@ class JSONStore implements Store {
 
         // Apply pagination
         const skip = spec.skip ?? 0;
-        const result = spec.limit !== undefined ? docs.slice(skip, skip + spec.limit) : docs.slice(skip);
+        const result =
+          spec.limit !== undefined ? docs.slice(skip, skip + spec.limit) : docs.slice(skip);
 
         if (process.env.JSONSTORE_DEBUG) {
           const duration = performance.now() - startTime;
@@ -358,7 +354,10 @@ class JSONStore implements Store {
 
       // Filter to directories only, exclude _meta and hidden directories
       const types = entries
-        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
+        .filter(
+          (entry) =>
+            entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith(".")
+        )
         .map((entry) => entry.name)
         .filter((name) => {
           // Validate each type name

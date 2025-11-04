@@ -143,38 +143,42 @@ describeIf("Query Performance Benchmarks", () => {
     expect(results.map((r) => r.id).sort()).toEqual(["100", "200", "300", "400", "500"]);
   });
 
-  it("1000 docs, streaming query with early termination - cold < 100ms", { timeout: 30000 }, async () => {
-    // Seed 1000 documents
-    for (let i = 1; i <= 1000; i++) {
-      await store.put(
-        { type: "task", id: String(i) },
-        {
-          type: "task",
-          id: String(i),
-          status: i % 2 === 0 ? "open" : "closed",
-          priority: i,
-        }
-      );
+  it(
+    "1000 docs, streaming query with early termination - cold < 100ms",
+    { timeout: 30000 },
+    async () => {
+      // Seed 1000 documents
+      for (let i = 1; i <= 1000; i++) {
+        await store.put(
+          { type: "task", id: String(i) },
+          {
+            type: "task",
+            id: String(i),
+            status: i % 2 === 0 ? "open" : "closed",
+            priority: i,
+          }
+        );
+      }
+
+      // Clear cache to simulate cold start
+      await store.close();
+      store = openStore({ root: testDir });
+
+      // Benchmark streaming query (should terminate early)
+      const start = Date.now();
+      const results = await store.query({
+        type: "task",
+        filter: { status: { $eq: "open" } },
+        limit: 10,
+      });
+      const duration = Date.now() - start;
+
+      console.log(`Streaming with early termination: ${results.length} results in ${duration}ms`);
+      expect(duration).toBeLessThan(100);
+      expect(results).toHaveLength(10);
+      expect(results.every((r) => r.status === "open")).toBe(true);
     }
-
-    // Clear cache to simulate cold start
-    await store.close();
-    store = openStore({ root: testDir });
-
-    // Benchmark streaming query (should terminate early)
-    const start = Date.now();
-    const results = await store.query({
-      type: "task",
-      filter: { status: { $eq: "open" } },
-      limit: 10,
-    });
-    const duration = Date.now() - start;
-
-    console.log(`Streaming with early termination: ${results.length} results in ${duration}ms`);
-    expect(duration).toBeLessThan(100);
-    expect(results).toHaveLength(10);
-    expect(results.every((r) => r.status === "open")).toBe(true);
-  });
+  );
 
   it("Multi-type scan performance - 500 docs across 5 types", async () => {
     // Seed 500 documents across 5 types

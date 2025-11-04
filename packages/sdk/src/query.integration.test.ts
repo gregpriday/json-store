@@ -8,7 +8,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore } from "./store.js";
-import type { Store, Document } from "./types.js";
+import type { Store } from "./types.js";
 
 describe("Query Integration Tests", () => {
   let testDir: string;
@@ -27,10 +27,22 @@ describe("Query Integration Tests", () => {
   describe("Filter Operators", () => {
     beforeEach(async () => {
       // Seed test data
-      await store.put({ type: "task", id: "1" }, { type: "task", id: "1", status: "open", priority: 5, title: "Task 1" });
-      await store.put({ type: "task", id: "2" }, { type: "task", id: "2", status: "closed", priority: 3, title: "Task 2" });
-      await store.put({ type: "task", id: "3" }, { type: "task", id: "3", status: "open", priority: 8, title: "Task 3" });
-      await store.put({ type: "task", id: "4" }, { type: "task", id: "4", status: "ready", priority: 5, title: "Task 4" });
+      await store.put(
+        { type: "task", id: "1" },
+        { type: "task", id: "1", status: "open", priority: 5, title: "Task 1" }
+      );
+      await store.put(
+        { type: "task", id: "2" },
+        { type: "task", id: "2", status: "closed", priority: 3, title: "Task 2" }
+      );
+      await store.put(
+        { type: "task", id: "3" },
+        { type: "task", id: "3", status: "open", priority: 8, title: "Task 3" }
+      );
+      await store.put(
+        { type: "task", id: "4" },
+        { type: "task", id: "4", status: "ready", priority: 5, title: "Task 4" }
+      );
     });
 
     it("$eq matches exact value", async () => {
@@ -143,7 +155,10 @@ describe("Query Integration Tests", () => {
     });
 
     it("$type validates field type", async () => {
-      await store.put({ type: "task", id: "5" }, { type: "task", id: "5", tags: ["urgent", "bug"] });
+      await store.put(
+        { type: "task", id: "5" },
+        { type: "task", id: "5", tags: ["urgent", "bug"] }
+      );
 
       const withArray = await store.query({
         type: "task",
@@ -164,9 +179,18 @@ describe("Query Integration Tests", () => {
 
   describe("Logical Operators", () => {
     beforeEach(async () => {
-      await store.put({ type: "task", id: "1" }, { type: "task", id: "1", status: "open", priority: 5 });
-      await store.put({ type: "task", id: "2" }, { type: "task", id: "2", status: "closed", priority: 3 });
-      await store.put({ type: "task", id: "3" }, { type: "task", id: "3", status: "open", priority: 8 });
+      await store.put(
+        { type: "task", id: "1" },
+        { type: "task", id: "1", status: "open", priority: 5 }
+      );
+      await store.put(
+        { type: "task", id: "2" },
+        { type: "task", id: "2", status: "closed", priority: 3 }
+      );
+      await store.put(
+        { type: "task", id: "3" },
+        { type: "task", id: "3", status: "open", priority: 8 }
+      );
     });
 
     it("$and logical AND", async () => {
@@ -263,10 +287,22 @@ describe("Query Integration Tests", () => {
 
   describe("Sort", () => {
     beforeEach(async () => {
-      await store.put({ type: "task", id: "1" }, { type: "task", id: "1", priority: 5, title: "B Task" });
-      await store.put({ type: "task", id: "2" }, { type: "task", id: "2", priority: 3, title: "C Task" });
-      await store.put({ type: "task", id: "3" }, { type: "task", id: "3", priority: 8, title: "A Task" });
-      await store.put({ type: "task", id: "4" }, { type: "task", id: "4", priority: 5, title: "A Task" });
+      await store.put(
+        { type: "task", id: "1" },
+        { type: "task", id: "1", priority: 5, title: "B Task" }
+      );
+      await store.put(
+        { type: "task", id: "2" },
+        { type: "task", id: "2", priority: 3, title: "C Task" }
+      );
+      await store.put(
+        { type: "task", id: "3" },
+        { type: "task", id: "3", priority: 8, title: "A Task" }
+      );
+      await store.put(
+        { type: "task", id: "4" },
+        { type: "task", id: "4", priority: 5, title: "A Task" }
+      );
     });
 
     it("sorts ascending by single field", async () => {
@@ -333,7 +369,14 @@ describe("Query Integration Tests", () => {
     beforeEach(async () => {
       await store.put(
         { type: "task", id: "1" },
-        { type: "task", id: "1", status: "open", priority: 5, title: "Task 1", description: "Long text" }
+        {
+          type: "task",
+          id: "1",
+          status: "open",
+          priority: 5,
+          title: "Task 1",
+          description: "Long text",
+        }
       );
     });
 
@@ -572,7 +615,10 @@ describe("Query Integration Tests", () => {
     });
 
     it("array field queries", async () => {
-      await store.put({ type: "task", id: "1" }, { type: "task", id: "1", tags: ["urgent", "bug"] });
+      await store.put(
+        { type: "task", id: "1" },
+        { type: "task", id: "1", tags: ["urgent", "bug"] }
+      );
       await store.put({ type: "task", id: "2" }, { type: "task", id: "2", tags: ["feature"] });
 
       const results = await store.query({
