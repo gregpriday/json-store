@@ -34,6 +34,33 @@ export interface ResolvedMarkdownPath {
   relPath: string;
 }
 
+// Windows reserved device names
+const WINDOWS_DEVICE_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/**
+ * Decode URI component safely, returning original on error
+ */
+function decodeURIComponentSafe(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * Decode URI component multiple times to handle double-encoding
+ */
+function multiDecode(s: string, maxIterations = 2): string {
+  let result = s;
+  for (let i = 0; i < maxIterations; i++) {
+    const decoded = decodeURIComponentSafe(result);
+    if (decoded === result) break;
+    result = decoded;
+  }
+  return result;
+}
+
 /**
  * Normalize and validate a relative path for markdown files
  *
@@ -43,6 +70,10 @@ export interface ResolvedMarkdownPath {
  * - No parent directory traversal (..)
  * - No current directory references (.)
  * - Must end with .md extension
+ * - No URL encoding bypasses
+ * - No Windows device names
+ * - No UNC paths
+ * - No alternate data streams
  *
  * @param relPath - Relative path to normalize
  * @param policy - Path validation policy
@@ -54,37 +85,60 @@ export function normalizeAndValidateRelPath(
   _policy: PathPolicy,
 ): string {
   // Must be a string
-  if (typeof relPath !== "string" || relPath.length === 0) {
+  if (typeof relPath !== "string" || relPath.trim().length === 0) {
     throw new MarkdownPathError(relPath, "path must be a non-empty string");
   }
 
-  // Must not be absolute
-  if (relPath.startsWith("/") || /^[a-zA-Z]:/.test(relPath)) {
-    throw new MarkdownPathError(relPath, "path must be relative, not absolute");
+  // Decode any URL encoding (including double-encoding attacks like %252e%252e)
+  const decoded = multiDecode(relPath);
+
+  // Must not be absolute (Unix, Windows drive, or UNC)
+  if (decoded.startsWith("/") || /^[a-zA-Z]:/.test(decoded) || decoded.startsWith("\\\\")) {
+    throw new MarkdownPathError(decoded, "path must be relative, not absolute");
   }
 
-  // Normalize to POSIX-style
-  let posixPath = relPath.split("\\").join("/");
+  // Block null bytes and alternate data streams (Windows :$DATA attacks)
+  if (decoded.includes("\0") || decoded.includes(":")) {
+    throw new MarkdownPathError(decoded, "path contains illegal characters");
+  }
+
+  // Normalize to POSIX-style (replace backslashes with forward slashes)
+  let posixPath = decoded.replace(/\\+/g, "/").replace(/\/+/g, "/");
 
   // Remove leading "./" if present (it's just "current directory" notation)
   if (posixPath.startsWith("./")) {
     posixPath = posixPath.slice(2);
   }
 
-  // Must end with .md
-  if (!posixPath.endsWith(".md")) {
+  // Must end with .md (case-insensitive)
+  if (!posixPath.toLowerCase().endsWith(".md")) {
     throw new MarkdownPathError(posixPath, "path must end with .md extension");
   }
 
   // Split into segments
   const segments = posixPath.split("/").filter((s) => s.length > 0);
 
-  // Check for traversal attempts (.. or .)
-  if (segments.some((s) => s === ".." || s === ".")) {
-    throw new MarkdownPathError(
-      posixPath,
-      "path must not contain '..' or '.' segments",
-    );
+  // Check each segment for security violations
+  for (const segment of segments) {
+    // Check for traversal attempts (.. or .)
+    if (segment === ".." || segment === ".") {
+      throw new MarkdownPathError(
+        posixPath,
+        "path must not contain '..' or '.' segments",
+      );
+    }
+
+    // Windows: block device names and handle trailing dots/spaces
+    const trimmed = segment.replace(/\.+$/u, "").replace(/\s+$/u, "");
+    if (trimmed.length === 0) {
+      throw new MarkdownPathError(posixPath, "path contains empty segments");
+    }
+
+    // Check for Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    const basename = trimmed.split(".")[0]; // Get name before extension
+    if (WINDOWS_DEVICE_RE.test(basename)) {
+      throw new MarkdownPathError(posixPath, "path contains reserved device name");
+    }
   }
 
   // Rebuild normalized path
@@ -140,11 +194,11 @@ export function resolveMdPath(
 }
 
 /**
- * Check if a path or any of its parent directories are symlinks
+ * Check if a path or any of its parent directories are symlinks or hardlinks
  *
  * @param absPath - Absolute path to check
  * @param policy - Path validation policy
- * @throws {MarkdownPathError} if path or any parent is a symlink and symlinks are not allowed
+ * @throws {MarkdownPathError} if path or any parent is a symlink/hardlink and not allowed
  */
 export async function checkSymlink(
   absPath: string,
@@ -156,11 +210,19 @@ export async function checkSymlink(
 
   // Check all path components from root to target
   // This prevents escapes through symlinked directories
-  const pathParts = absPath.split(posix.sep).filter(p => p.length > 0);
-  let currentPath = posix.sep;
+  // Use platform-appropriate separator (fixes Windows/UNC path handling)
+  const { sep } = await import("node:path");
+  const pathParts = absPath.split(sep).filter(p => p.length > 0);
+
+  // Handle absolute paths correctly per platform
+  let currentPath = absPath.startsWith(sep) ? sep : "";
+  // Windows drive letter handling (C:\)
+  if (process.platform === "win32" && /^[A-Za-z]:/.test(pathParts[0])) {
+    currentPath = pathParts.shift()! + sep;
+  }
 
   for (const part of pathParts) {
-    currentPath = join(currentPath, part);
+    currentPath = currentPath ? join(currentPath, part) : part;
 
     // Only check paths within allowed roots
     let withinRoot = false;
@@ -177,8 +239,15 @@ export async function checkSymlink(
 
     try {
       const stats = await lstat(currentPath);
+
+      // Check for symlinks (includes Windows junctions/reparse points)
       if (stats.isSymbolicLink()) {
         throw new MarkdownPathError(currentPath, "symlinks are not allowed");
+      }
+
+      // Check for hardlinks (nlink > 1) to prevent escapes via hardlinked files
+      if (stats.isFile() && stats.nlink > 1) {
+        throw new MarkdownPathError(currentPath, "hardlinks are not allowed");
       }
     } catch (error) {
       if (error instanceof MarkdownPathError) {

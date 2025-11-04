@@ -308,6 +308,100 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         store.put(key, doc, { markdown: { content: "hack" } })
       ).rejects.toThrow();
     });
+
+    it("should reject URL-encoded traversal (%2e%2e)", async () => {
+      const key: Key = { type: "test", id: "encoded" };
+      const doc = {
+        type: "test",
+        id: "encoded",
+        md: {
+          content: "%2e%2e/escape.md",
+        },
+      };
+
+      await expect(
+        store.put(key, doc, { markdown: { content: "hack" } })
+      ).rejects.toThrow();
+    });
+
+    it("should reject double URL-encoded traversal (%252e%252e)", async () => {
+      const key: Key = { type: "test", id: "double-encoded" };
+      const doc = {
+        type: "test",
+        id: "double-encoded",
+        md: {
+          content: "%252e%252e/escape.md",
+        },
+      };
+
+      await expect(
+        store.put(key, doc, { markdown: { content: "hack" } })
+      ).rejects.toThrow();
+    });
+
+    it("should reject Windows device names (CON, NUL, etc.)", async () => {
+      const deviceNames = ["con.md", "nul.md", "prn.md", "aux.md", "com1.md", "lpt1.md"];
+
+      for (const deviceName of deviceNames) {
+        const key: Key = { type: "test", id: `device-${deviceName}` };
+        const doc = {
+          type: "test",
+          id: `device-${deviceName}`,
+          md: {
+            content: `./${deviceName}`,
+          },
+        };
+
+        await expect(
+          store.put(key, doc, { markdown: { content: "test" } })
+        ).rejects.toThrow("reserved device name");
+      }
+    });
+
+    it("should reject UNC paths", async () => {
+      const key: Key = { type: "test", id: "unc" };
+      const doc = {
+        type: "test",
+        id: "unc",
+        md: {
+          content: "\\\\\\\\server\\\\share\\\\evil.md",
+        },
+      };
+
+      await expect(
+        store.put(key, doc, { markdown: { content: "hack" } })
+      ).rejects.toThrow("absolute");
+    });
+
+    it("should reject alternate data streams", async () => {
+      const key: Key = { type: "test", id: "ads" };
+      const doc = {
+        type: "test",
+        id: "ads",
+        md: {
+          content: "./file.md:$DATA",
+        },
+      };
+
+      await expect(
+        store.put(key, doc, { markdown: { content: "hack" } })
+      ).rejects.toThrow("illegal characters");
+    });
+
+    it("should reject null bytes in paths", async () => {
+      const key: Key = { type: "test", id: "null-byte" };
+      const doc = {
+        type: "test",
+        id: "null-byte",
+        md: {
+          content: "./file\0.md",
+        },
+      };
+
+      await expect(
+        store.put(key, doc, { markdown: { content: "hack" } })
+      ).rejects.toThrow("illegal characters");
+    });
   });
 
   describe("Security - Symlink Protection", () => {
@@ -397,6 +491,45 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
 
       // Cleanup
       await unlink(externalFile);
+    });
+
+    it("should reject hardlinked markdown files (nlink > 1)", async () => {
+      const key: Key = { type: "hardlink-test", id: "test" };
+      const doc = {
+        type: "hardlink-test",
+        id: "test",
+        md: {
+          content: "./content.md",
+        },
+      };
+
+      // Create external file
+      const externalFile = join(tmpdir(), `external-hardlink-${Date.now()}.md`);
+      await writeFile(externalFile, "External content", "utf-8");
+
+      // Create document directory
+      const docDir = join(testRoot, "hardlink-test", "test");
+      await mkdir(docDir, { recursive: true });
+
+      // Create hardlink to external file
+      const mdPath = join(docDir, "content.md");
+      try {
+        await import("node:fs/promises").then((fs) => fs.link(externalFile, mdPath));
+
+        // Reading should reject the hardlink
+        await expect(store.readMarkdown(key, "content")).rejects.toThrow("hardlink");
+      } catch (err: any) {
+        // Skip test if hardlinks not supported on this platform/filesystem
+        if (err.code === "EPERM" || err.code === "ENOSYS" || err.code === "ENOTSUP") {
+          console.log("Skipping hardlink test - not supported on this platform");
+        } else {
+          throw err;
+        }
+      } finally {
+        // Cleanup
+        await unlink(externalFile).catch(() => {});
+        await unlink(mdPath).catch(() => {});
+      }
     });
   });
 

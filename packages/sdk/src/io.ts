@@ -242,14 +242,17 @@ export class DirTransaction {
   #stagingDir: string;
   #committed = false;
   #aborted = false;
+  #preCommitValidation?: () => Promise<void>;
 
   /**
    * Create a new directory transaction
    * @param rootDir - Target root directory for the transaction
+   * @param options - Optional configuration
    */
-  constructor(rootDir: string) {
+  constructor(rootDir: string, options?: { preCommitValidation?: () => Promise<void> }) {
     this.#rootDir = rootDir;
     this.#stagingDir = join(dirname(rootDir), `.txn.${randomUUID()}`);
+    this.#preCommitValidation = options?.preCommitValidation;
   }
 
   /**
@@ -335,6 +338,12 @@ export class DirTransaction {
     this.#checkNotFinalized();
 
     try {
+      // Run pre-commit validation if provided (e.g., re-check symlinks)
+      // This reduces TOCTOU window for security checks
+      if (this.#preCommitValidation) {
+        await this.#preCommitValidation();
+      }
+
       // Check if target exists
       let targetExists = false;
       try {
@@ -354,8 +363,19 @@ export class DirTransaction {
         await fs.rename(this.#rootDir, backup);
         try {
           await fs.rename(this.#stagingDir, this.#rootDir);
-          // Success - remove backup
-          await fs.rm(backup, { recursive: true, force: true });
+
+          // Success - mark as committed before cleanup
+          this.#committed = true;
+
+          // Best-effort backup removal (don't fail if this fails)
+          try {
+            await fs.rm(backup, { recursive: true, force: true });
+          } catch (cleanupErr: any) {
+            // Log but don't throw - the commit succeeded
+            if (process.env.JSONSTORE_DEBUG) {
+              console.warn(`Backup cleanup failed for ${backup}:`, cleanupErr.message);
+            }
+          }
         } catch (err) {
           // Failed to move staging - restore backup
           try {
@@ -368,6 +388,7 @@ export class DirTransaction {
       } else {
         // Target doesn't exist - simple rename
         await fs.rename(this.#stagingDir, this.#rootDir);
+        this.#committed = true;
       }
 
       // Fsync parent directory for durability
@@ -387,8 +408,6 @@ export class DirTransaction {
           }
         }
       }
-
-      this.#committed = true;
     } catch (err) {
       // Clean up staging on error
       await this.abort();

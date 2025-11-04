@@ -1657,7 +1657,19 @@ class JSONStore implements Store {
       }
     }
 
-    const txn = new DirTransaction(docDir);
+    // Create transaction with pre-commit validation to reduce TOCTOU window
+    const txn = new DirTransaction(docDir, {
+      preCommitValidation: async () => {
+        // Re-validate all markdown paths immediately before commit
+        // This catches any symlink/hardlink swaps that happened after initial validation
+        if (mdMap) {
+          for (const [fieldKey, ref] of Object.entries(mdMap)) {
+            const { absPath } = resolveMdPath(docDir, ref, policy);
+            await checkSymlink(absPath, policy);
+          }
+        }
+      },
+    });
 
     try {
       // Write JSON file
@@ -1678,7 +1690,7 @@ class JSONStore implements Store {
         }
       }
 
-      // Commit transaction
+      // Commit transaction (runs pre-commit validation)
       await txn.commit();
 
       // Invalidate cache for both flat and layout 1 paths
