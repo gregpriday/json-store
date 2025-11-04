@@ -1,0 +1,43 @@
+# .copytreeignore
+#
+# Additional exclusions for CopyTree beyond .gitignore
+# Note: .gitignore is already respected and handles:
+#   - node_modules/, .pnpm-store/
+#   - dist/, build/, *.tsbuildinfo
+#   - coverage/, .nyc_output/
+#   - *.log files
+#   - .env files
+#   - IDE dirs (.vscode/, .idea/)
+#   - OS files (.DS_Store, etc.)
+#   - data/ directory
+
+# Lock files (dependency management - not needed for code documentation)
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Test files (uncomment these lines to exclude tests from documentation)
+# **/*.test.ts
+# **/*.integration.test.ts
+# **/test/**
+# **/tests/**
+
+# Benchmark files (uncomment to exclude)
+# **/*.bench.ts
+# **/benchmarks/**
+
+# GitHub workflows (uncomment if not needed in documentation)
+# .github/
+
+# Git metadata (uncomment if not needed)
+# .gitattributes
+# .gitmodules
+
+# Documentation drafts or work-in-progress notes
+# **/*DRAFT*.md
+# **/*TODO*.md
+# **/*WIP*.md
+
+# Example/template environment files (uncomment to exclude)
+# .env.example
+# .env.template
