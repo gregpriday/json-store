@@ -26,7 +26,12 @@ function matchField(val: any, cond: any): boolean {
     for (const [op, rhs] of Object.entries(cond)) {
       switch (op) {
         case "$eq":
-          if (!(val === rhs)) return false;
+          // Special handling for array fields: check if rhs is contained in array
+          if (Array.isArray(val)) {
+            if (!val.includes(rhs)) return false;
+          } else {
+            if (!(val === rhs)) return false;
+          }
           break;
         case "$ne":
           if (!(val !== rhs)) return false;
@@ -67,6 +72,10 @@ function matchField(val: any, cond: any): boolean {
   }
 
   // Direct equality
+  // Special handling for array fields: check if cond is contained in array
+  if (Array.isArray(val)) {
+    return val.includes(cond);
+  }
   return val === cond;
 }
 
