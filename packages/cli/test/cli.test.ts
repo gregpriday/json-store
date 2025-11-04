@@ -3,13 +3,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-
-const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,24 +27,48 @@ async function runCli(
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const { stdin, cwd, expectError } = options ?? {};
 
-  try {
-    const { stdout, stderr } = await execFileAsync("node", [CLI_PATH, ...args], {
+  return new Promise((resolve, reject) => {
+    const child = spawn("node", [CLI_PATH, ...args], {
       cwd: cwd ?? process.cwd(),
-      input: stdin,
-      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
-    return { stdout, stderr, exitCode: 0 };
-  } catch (err: any) {
-    if (expectError) {
-      return {
-        stdout: err.stdout ?? "",
-        stderr: err.stderr ?? "",
-        exitCode: err.code ?? 1,
-      };
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+
+    child.on("error", (error) => {
+      if (expectError) {
+        resolve({ stdout, stderr, exitCode: typeof child.exitCode === "number" ? child.exitCode : 1 });
+      } else {
+        reject(error);
+      }
+    });
+
+    child.on("close", (code, signal) => {
+      const exitCode = code ?? (signal ? 1 : 0);
+      if (!expectError && exitCode !== 0) {
+        const err: NodeJS.ErrnoException = new Error(`CLI exited with code ${exitCode}`);
+        (err as any).code = exitCode;
+        (err as any).stdout = stdout;
+        (err as any).stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr, exitCode });
+    });
+
+    if (child.stdin) {
+      if (stdin !== undefined) {
+        child.stdin.write(stdin);
+      }
+      child.stdin.end();
     }
-    throw err;
-  }
+  });
 }
 
 describe("CLI", () => {
@@ -139,8 +160,7 @@ describe("CLI", () => {
       expect(result.stdout).toContain("Stored user/bob");
     });
 
-    it.skip("should store a document from stdin", async () => {
-      // Skip: stdin handling in child_process with node CLI needs special setup
+    it("should store a document from stdin", async () => {
       const doc = { type: "user", id: "charlie", name: "Charlie" };
 
       const result = await runCli(["put", "user", "charlie", "--root", tmpDir], {
@@ -329,8 +349,7 @@ describe("CLI", () => {
       expect(results.every((r: any) => r.role === "user")).toBe(true);
     });
 
-    it.skip("should query with stdin", async () => {
-      // Skip: stdin handling in child_process with node CLI needs special setup
+    it("should query with stdin", async () => {
       const query = {
         type: "user",
         filter: { age: { $gte: 30 } },
@@ -378,34 +397,83 @@ describe("CLI", () => {
     });
   });
 
-  describe.skip("format", () => {
-    // Skipped: format() not yet implemented in SDK
+  describe("format", () => {
+    let docPath: string;
+    const NON_CANONICAL_JSON = '{"name":"Alice","type":"user","id":"alice"}\n';
+    const CANONICAL_JSON = '{\n  "id": "alice",\n  "name": "Alice",\n  "type": "user"\n}\n';
+
+    const makeDocumentNonCanonical = async () => {
+      await fs.writeFile(docPath, NON_CANONICAL_JSON);
+    };
+
+    const expectCanonicalDocument = async () => {
+      const content = await fs.readFile(docPath, "utf8");
+      expect(content).toBe(CANONICAL_JSON);
+    };
+
     beforeEach(async () => {
       await runCli(["init", "--root", tmpDir]);
 
       const doc = { type: "user", id: "alice", name: "Alice" };
       await runCli(["put", "user", "alice", "--root", tmpDir, "--data", JSON.stringify(doc)]);
+
+      docPath = path.join(tmpDir, "user", "alice.json");
     });
 
     it("should format all documents with --all", async () => {
+      await makeDocumentNonCanonical();
+
       const result = await runCli(["format", "--root", tmpDir, "--all"]);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Formatted all documents");
+      expect(result.stdout).toContain("Formatted 1 document(s)");
+
+      await expectCanonicalDocument();
     });
 
     it("should format by type", async () => {
+      await makeDocumentNonCanonical();
+
       const result = await runCli(["format", "user", "--root", tmpDir]);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Formatted all user documents");
+      expect(result.stdout).toContain("Formatted 1 document(s)");
+
+      await expectCanonicalDocument();
     });
 
     it("should format specific document", async () => {
+      await makeDocumentNonCanonical();
+
       const result = await runCli(["format", "user", "alice", "--root", tmpDir]);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Formatted user/alice");
+      expect(result.stdout).toContain("Formatted 1 document(s)");
+
+      await expectCanonicalDocument();
+    });
+
+    it("should report changes in check mode", async () => {
+      await makeDocumentNonCanonical();
+
+      const result = await runCli(
+        ["format", "--root", tmpDir, "--all", "--check"],
+        { expectError: true }
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("document(s) need formatting");
+      expect(result.stderr).toContain("Formatting check failed");
+
+      const content = await fs.readFile(docPath, "utf8");
+      expect(content).toBe(NON_CANONICAL_JSON);
+    });
+
+    it("should pass check mode when already canonical", async () => {
+      const result = await runCli(["format", "--root", tmpDir, "--all", "--check"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("All documents are properly formatted");
     });
 
     it("should reject ambiguous scope", async () => {
@@ -427,42 +495,7 @@ describe("CLI", () => {
     });
   });
 
-  describe.skip("stats", () => {
-    // Skipped: stats() not yet implemented in SDK
-    beforeEach(async () => {
-      await runCli(["init", "--root", tmpDir]);
-
-      const users = [
-        { type: "user", id: "alice", name: "Alice" },
-        { type: "user", id: "bob", name: "Bob" },
-      ];
-
-      for (const user of users) {
-        await runCli(["put", "user", user.id, "--root", tmpDir, "--data", JSON.stringify(user)]);
-      }
-    });
-
-    it("should show stats in human-readable format", async () => {
-      const result = await runCli(["stats", "--root", tmpDir, "--type", "user"]);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Documents:");
-      expect(result.stdout).toContain("2");
-      expect(result.stdout).toContain("Total size:");
-      expect(result.stdout).toContain("KB");
-    });
-
-    it("should show stats in JSON format", async () => {
-      const result = await runCli(["stats", "--root", tmpDir, "--type", "user", "--json"]);
-
-      expect(result.exitCode).toBe(0);
-      const stats = JSON.parse(result.stdout);
-      expect(stats).toHaveProperty("count");
-      expect(stats).toHaveProperty("bytes");
-      expect(stats.count).toBe(2);
-      expect(stats.bytes).toBeGreaterThan(0);
-    });
-  });
+  // Note: stats command tests are in cli.stats.test.ts
 
   describe("global options", () => {
     it("should respect --quiet", async () => {

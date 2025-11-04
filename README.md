@@ -160,7 +160,20 @@ pnpm --filter @jsonstore/sdk test
 
 # Watch mode
 pnpm --filter @jsonstore/sdk test:watch
+
+# Run performance benchmarks (opt-in, requires local SSD)
+env VITEST_PERF=1 pnpm --filter @jsonstore/sdk test
 ```
+
+**Performance Benchmarks**: The SDK includes 8 performance benchmark tests that are skipped by default:
+- 7 query benchmarks testing cold-start performance on 500-1000 documents
+- 1 I/O benchmark testing atomic write performance (100 files, p95 ≤15ms)
+
+These benchmarks:
+- Require ~60-90 seconds to run due to real filesystem I/O
+- Are optimized for local SSD performance (may fail on HDDs or networked volumes)
+- Test performance SLOs rather than correctness
+- Should be enabled with `VITEST_PERF=1` when validating performance on new hardware or after optimization changes
 
 ### Type Checking
 

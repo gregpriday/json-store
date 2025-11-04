@@ -212,8 +212,7 @@ describe("Tool integration tests", () => {
   });
 
   describe("ensure_index", () => {
-    it.skip("should create an index without error", async () => {
-      // TODO: ensureIndex is not yet implemented in the SDK
+    it("should create an index without error", async () => {
       const result = await ensureIndex({
         type: "task",
         field: "status",
@@ -222,8 +221,7 @@ describe("Tool integration tests", () => {
       expect((result.content[1] as any).json.ok).toBe(true);
     });
 
-    it.skip("should be idempotent", async () => {
-      // TODO: ensureIndex is not yet implemented in the SDK
+    it("should be idempotent", async () => {
       await ensureIndex({ type: "task", field: "status" });
       const result = await ensureIndex({ type: "task", field: "status" });
 

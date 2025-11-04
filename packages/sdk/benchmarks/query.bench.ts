@@ -180,7 +180,7 @@ describeIf("Query Performance Benchmarks", () => {
     }
   );
 
-  it("Multi-type scan performance - 500 docs across 5 types", async () => {
+  it("Multi-type scan performance - 500 docs across 5 types", { timeout: 30000 }, async () => {
     // Seed 500 documents across 5 types
     const types = ["task", "note", "user", "project", "comment"];
     for (let i = 1; i <= 500; i++) {
