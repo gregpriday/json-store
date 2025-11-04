@@ -81,3 +81,34 @@ export function sanitizePath(component: string): string {
   }
   return component;
 }
+
+/**
+ * Validate a type name to prevent path traversal attacks
+ * @param typeName - Type name to validate
+ * @throws Error if type name is unsafe
+ */
+export function validateTypeName(typeName: string): void {
+  if (!typeName || typeof typeName !== "string") {
+    throw new Error("Type name must be a non-empty string");
+  }
+
+  // Check for path separators
+  if (typeName.includes("/") || typeName.includes("\\")) {
+    throw new Error(`Type name cannot contain path separators: "${typeName}"`);
+  }
+
+  // Check for path traversal sequences
+  if (typeName.includes("..")) {
+    throw new Error(`Type name cannot contain "..": "${typeName}"`);
+  }
+
+  // Check for absolute paths (Unix or Windows)
+  if (typeName.includes(":")) {
+    throw new Error(`Type name cannot contain ":": "${typeName}"`);
+  }
+
+  // Reject names starting with underscore or dot (reserved for internal use)
+  if (typeName.startsWith("_") || typeName.startsWith(".")) {
+    throw new Error(`Type name cannot start with "_" or ".": "${typeName}"`);
+  }
+}

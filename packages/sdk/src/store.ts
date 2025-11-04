@@ -15,10 +15,11 @@ import type {
   WriteOptions,
   RemoveOptions,
   StoreStats,
+  DetailedStats,
   FormatTarget,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
-import { validateDocument, validateName, validateKey } from "./validation.js";
+import { validateDocument, validateName, validateKey, validateTypeName } from "./validation.js";
 import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
 import { evaluateQuery, matches, project } from "./query.js";
 import { stableStringify } from "./format.js";
@@ -227,11 +228,9 @@ class JSONStore implements Store {
     }
 
     // Check for fast path: single type, simple ID-based filter, no sort/projection
-    let _usedFastPath = false;
     if (spec.type && !spec.sort && !spec.projection && this.canUseFastPath(spec.filter)) {
       const ids = this.extractIdsFromFilter(spec.filter);
       if (ids) {
-        _usedFastPath = true;
         const docs: Document[] = [];
 
         for (const id of ids) {
@@ -369,13 +368,230 @@ class JSONStore implements Store {
     throw new Error("Not implemented yet");
   }
 
-  async stats(_type?: string): Promise<StoreStats> {
-    throw new Error("Not implemented yet");
+  async stats(type?: string): Promise<StoreStats> {
+    const startTime = process.env.JSONSTORE_DEBUG ? performance.now() : 0;
+
+    if (type) {
+      // Stats for specific type
+      validateTypeName(type);
+      const result = await this.getTypeStats(type);
+
+      if (process.env.JSONSTORE_DEBUG) {
+        const duration = performance.now() - startTime;
+        console.error(
+          `[JSONSTORE_DEBUG] stats: type=${type}, count=${result.count}, bytes=${result.bytes}, ${duration.toFixed(2)}ms`
+        );
+      }
+
+      return result;
+    }
+
+    // Stats for all types
+    const types = await this.listTypes();
+    let totalCount = 0;
+    let totalBytes = 0;
+
+    // Process types with limited concurrency to avoid FD exhaustion
+    const CONCURRENCY = 16;
+    for (let i = 0; i < types.length; i += CONCURRENCY) {
+      const batch = types.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(batch.map((t) => this.getTypeStats(t)));
+
+      for (const stats of results) {
+        totalCount += stats.count;
+        totalBytes += stats.bytes;
+      }
+    }
+
+    if (process.env.JSONSTORE_DEBUG) {
+      const duration = performance.now() - startTime;
+      console.error(
+        `[JSONSTORE_DEBUG] stats: type=all, types=${types.length}, count=${totalCount}, bytes=${totalBytes}, ${duration.toFixed(2)}ms`
+      );
+    }
+
+    return { count: totalCount, bytes: totalBytes };
+  }
+
+  async detailedStats(): Promise<DetailedStats> {
+    const startTime = process.env.JSONSTORE_DEBUG ? performance.now() : 0;
+
+    const types = await this.listTypes();
+    const typeStats: Record<string, StoreStats> = {};
+
+    let totalCount = 0;
+    let totalBytes = 0;
+    let globalMin = Infinity;
+    let globalMax = 0;
+
+    // Process types with limited concurrency
+    const CONCURRENCY = 16;
+    for (let i = 0; i < types.length; i += CONCURRENCY) {
+      const batch = types.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (type) => {
+          const detailed = await this.scanType(type);
+          return { type, ...detailed };
+        })
+      );
+
+      for (const result of results) {
+        typeStats[result.type] = { count: result.count, bytes: result.bytes };
+        totalCount += result.count;
+        totalBytes += result.bytes;
+        if (result.count > 0) {
+          globalMin = Math.min(globalMin, result.minBytes);
+          globalMax = Math.max(globalMax, result.maxBytes);
+        }
+      }
+    }
+
+    if (process.env.JSONSTORE_DEBUG) {
+      const duration = performance.now() - startTime;
+      console.error(
+        `[JSONSTORE_DEBUG] detailedStats: types=${types.length}, count=${totalCount}, bytes=${totalBytes}, ${duration.toFixed(2)}ms`
+      );
+    }
+
+    return {
+      count: totalCount,
+      bytes: totalBytes,
+      avgBytes: totalCount > 0 ? totalBytes / totalCount : 0,
+      minBytes: globalMin === Infinity ? 0 : globalMin,
+      maxBytes: globalMax,
+      types: typeStats,
+    };
   }
 
   async close(): Promise<void> {
     // Cleanup resources (file watchers, cache, etc.)
     this.#cache.clear();
+  }
+
+  /**
+   * Get statistics for a specific type
+   * @param type - Type name
+   * @returns Statistics for the type
+   */
+  private async getTypeStats(type: string): Promise<StoreStats> {
+    const result = await this.scanType(type);
+    return { count: result.count, bytes: result.bytes };
+  }
+
+  /**
+   * Scan a type directory and collect detailed statistics
+   * @param type - Type name
+   * @returns Detailed scan results
+   */
+  private async scanType(
+    type: string
+  ): Promise<{ count: number; bytes: number; minBytes: number; maxBytes: number }> {
+    const typeDir = path.join(this.#options.root, type);
+
+    // Check directory metadata without following symlinks
+    const dirStats = await fs.lstat(typeDir).catch((err: any) => {
+      if (err.code === "ENOENT") {
+        return null;
+      }
+      throw err;
+    });
+
+    if (!dirStats) {
+      return { count: 0, bytes: 0, minBytes: 0, maxBytes: 0 };
+    }
+
+    if (dirStats.isSymbolicLink() || !dirStats.isDirectory()) {
+      if (process.env.JSONSTORE_DEBUG) {
+        console.warn(`[JSONSTORE_DEBUG] Skipping unsafe type directory: ${typeDir}`);
+      }
+      return { count: 0, bytes: 0, minBytes: 0, maxBytes: 0 };
+    }
+
+    const realTypeDir = await fs.realpath(typeDir).catch((err: any) => {
+      if (err.code === "ENOENT") {
+        return null;
+      }
+      throw err;
+    });
+
+    if (!realTypeDir) {
+      return { count: 0, bytes: 0, minBytes: 0, maxBytes: 0 };
+    }
+
+    const realRootDir = await fs.realpath(this.#options.root);
+    const relativeDir = path.relative(realRootDir, realTypeDir);
+    if (relativeDir.startsWith("..") || path.isAbsolute(relativeDir)) {
+      throw new Error(`Type directory resolves outside of store root: ${type}`);
+    }
+
+    let count = 0;
+    let bytes = 0;
+    let minBytes = Infinity;
+    let maxBytes = 0;
+    let skippedFiles = 0;
+
+    try {
+      // Use opendir for streaming to avoid memory spikes with large directories
+      const dir = await fs.opendir(typeDir);
+
+      for await (const entry of dir) {
+        // Only process .json files
+        if (!entry.name.endsWith(".json")) {
+          continue;
+        }
+
+        // Get file stats using lstat to avoid following symlinks
+        const filePath = path.join(typeDir, entry.name);
+        try {
+          const stats = await fs.lstat(filePath);
+
+          // Skip anything that isn't a regular file (covers symlinks, directories, sockets, etc.)
+          if (!stats.isFile()) {
+            if (process.env.JSONSTORE_DEBUG) {
+              console.warn(`[JSONSTORE_DEBUG] Skipping non-file: ${filePath}`);
+            }
+            skippedFiles++;
+            continue;
+          }
+
+          count++;
+          bytes += stats.size;
+          minBytes = Math.min(minBytes, stats.size);
+          maxBytes = Math.max(maxBytes, stats.size);
+        } catch (err: any) {
+          // Handle transient errors (file deleted between readdir and lstat)
+          if (err.code === "ENOENT") {
+            if (process.env.JSONSTORE_DEBUG) {
+              console.warn(`[JSONSTORE_DEBUG] File disappeared during scan: ${filePath}`);
+            }
+            skippedFiles++;
+            continue;
+          }
+          // Log other errors but continue scanning
+          if (process.env.JSONSTORE_DEBUG) {
+            console.warn(`[JSONSTORE_DEBUG] Error stating file ${filePath}:`, err.message);
+          }
+          skippedFiles++;
+        }
+      }
+    } catch (err: any) {
+      // Directory disappeared or became inaccessible during scan
+      if (err.code === "ENOENT") {
+        return { count: 0, bytes: 0, minBytes: 0, maxBytes: 0 };
+      }
+      throw err;
+    }
+
+    if (process.env.JSONSTORE_DEBUG && skippedFiles > 0) {
+      console.warn(`[JSONSTORE_DEBUG] Skipped ${skippedFiles} files in ${type}`);
+    }
+
+    return {
+      count,
+      bytes,
+      minBytes: count > 0 ? minBytes : 0,
+      maxBytes: count > 0 ? maxBytes : 0,
+    };
   }
 
   /**
@@ -387,21 +603,36 @@ class JSONStore implements Store {
       const entries = await fs.readdir(this.#options.root, { withFileTypes: true });
 
       // Filter to directories only, exclude _meta and hidden directories
-      const types = entries
-        .filter(
-          (entry) =>
-            entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith(".")
-        )
-        .map((entry) => entry.name)
-        .filter((name) => {
-          // Validate each type name
-          try {
-            validateName(name, "type");
-            return true;
-          } catch {
-            return false;
+      // Also exclude symlinks for security
+      const types: string[] = [];
+
+      for (const entry of entries) {
+        // Skip symlinks for security
+        if (entry.isSymbolicLink()) {
+          continue;
+        }
+
+        // Skip internal and hidden directories
+        if (entry.name.startsWith("_") || entry.name.startsWith(".")) {
+          continue;
+        }
+
+        // Only include directories
+        if (!entry.isDirectory()) {
+          continue;
+        }
+
+        // Validate type name
+        try {
+          validateTypeName(entry.name);
+          types.push(entry.name);
+        } catch {
+          // Skip invalid type names
+          if (process.env.JSONSTORE_DEBUG) {
+            console.warn(`Skipping invalid type name: ${entry.name}`);
           }
-        });
+        }
+      }
 
       return types.sort();
     } catch (err: any) {

@@ -117,6 +117,20 @@ export interface StoreStats {
 }
 
 /**
+ * Detailed statistics with per-type breakdown
+ */
+export interface DetailedStats extends StoreStats {
+  /** Average document size in bytes */
+  avgBytes: number;
+  /** Minimum document size in bytes */
+  minBytes: number;
+  /** Maximum document size in bytes */
+  maxBytes: number;
+  /** Per-type statistics (optional) */
+  types?: Record<string, StoreStats>;
+}
+
+/**
  * Target for format operation
  */
 export type FormatTarget = { all: true } | { type: string; id?: string };
@@ -187,6 +201,12 @@ export interface Store {
    * @returns Statistics object
    */
   stats(type?: string): Promise<StoreStats>;
+
+  /**
+   * Get detailed statistics with per-type breakdown
+   * @returns Detailed statistics object
+   */
+  detailedStats(): Promise<DetailedStats>;
 
   /**
    * Close the store and clean up resources
