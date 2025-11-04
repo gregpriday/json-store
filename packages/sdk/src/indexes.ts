@@ -773,7 +773,11 @@ export class IndexManager {
   /**
    * Resolve a slug or alias to a document ID
    */
-  async resolveSlugOrAlias(type: string, scopeKey: string, slugOrAlias: string): Promise<string | undefined> {
+  async resolveSlugOrAlias(
+    type: string,
+    scopeKey: string,
+    slugOrAlias: string
+  ): Promise<string | undefined> {
     validateName(type, "type");
 
     // First check canonical slugs

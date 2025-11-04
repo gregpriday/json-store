@@ -212,9 +212,7 @@ describe("generateSlug", () => {
   });
 
   test("allows custom reserved words", () => {
-    expect(() =>
-      generateSlug("hello", { reservedWords: ["hello", "world"] })
-    ).toThrow();
+    expect(() => generateSlug("hello", { reservedWords: ["hello", "world"] })).toThrow();
     expect(() => generateSlug("admin", { reservedWords: [] })).not.toThrow();
   });
 
@@ -297,17 +295,17 @@ describe("generateUniqueSlug", () => {
   });
 
   test("handles many collisions", () => {
-    const existing = new Set(Array.from({ length: 100 }, (_, i) =>
-      i === 0 ? "foo" : `foo-${i + 1}`
-    ));
+    const existing = new Set(
+      Array.from({ length: 100 }, (_, i) => (i === 0 ? "foo" : `foo-${i + 1}`))
+    );
     const result = generateUniqueSlug("foo", existing);
     expect(result).toBe("foo-101");
   });
 
   test("falls back to hash after 1000 attempts", () => {
-    const existing = new Set(Array.from({ length: 1000 }, (_, i) =>
-      i === 0 ? "foo" : `foo-${i + 1}`
-    ));
+    const existing = new Set(
+      Array.from({ length: 1000 }, (_, i) => (i === 0 ? "foo" : `foo-${i + 1}`))
+    );
     const result = generateUniqueSlug("foo", existing);
     expect(result).toMatch(/^foo-[a-z0-9]{6}$/);
   });

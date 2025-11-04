@@ -270,11 +270,7 @@ export interface Store {
    * @param slugOrAlias - Slug or alias to resolve
    * @returns Document if found, null otherwise
    */
-  resolveSlugOrAlias(
-    type: string,
-    scopeKey: string,
-    slugOrAlias: string
-  ): Promise<Document | null>;
+  resolveSlugOrAlias(type: string, scopeKey: string, slugOrAlias: string): Promise<Document | null>;
 
   /**
    * Format documents to ensure canonical representation

@@ -168,8 +168,11 @@ class JSONStore implements Store {
       oldSlugScopeKey = result.oldScopeKey ?? result.scopeKey;
       oldSlug = result.oldSlug;
 
-      // Claim the new slug (if it changed)
-      if (processedDoc.slug && processedDoc.slug !== oldSlug) {
+      // Claim the new slug (if it changed or scope changed)
+      const slugChanged = processedDoc.slug && processedDoc.slug !== oldSlug;
+      const scopeChanged = slugScopeKey !== oldSlugScopeKey;
+
+      if (processedDoc.slug && (slugChanged || scopeChanged)) {
         const claimResult = await this.#indexManager.claimSlug(
           key.type,
           slugScopeKey,
@@ -214,7 +217,9 @@ class JSONStore implements Store {
         await atomicWrite(filePath, content);
       } catch (err: any) {
         // Compensating action: release slug claim if write failed
-        if (slugConfig && processedDoc.slug && processedDoc.slug !== oldSlug) {
+        const slugChanged = processedDoc.slug && processedDoc.slug !== oldSlug;
+        const scopeChanged = slugScopeKey !== oldSlugScopeKey;
+        if (slugConfig && processedDoc.slug && (slugChanged || scopeChanged)) {
           await this.#indexManager.releaseSlug(key.type, slugScopeKey, processedDoc.slug, key.id);
         }
         throw err;
@@ -222,22 +227,23 @@ class JSONStore implements Store {
     }
 
     // Release old slug after successful write (use old scope if document moved)
-    if (slugConfig && oldSlug && oldSlug !== processedDoc.slug && !unchanged) {
+    // Release if: slug text changed OR (slug text same but scope changed)
+    const shouldReleaseOldSlug =
+      slugConfig &&
+      oldSlug &&
+      !unchanged &&
+      (oldSlug !== processedDoc.slug || slugScopeKey !== oldSlugScopeKey);
+
+    if (shouldReleaseOldSlug) {
       const releaseScope = oldSlugScopeKey || slugScopeKey;
       await this.#indexManager.releaseSlug(key.type, releaseScope, oldSlug, key.id);
 
-      // Handle alias creation for published slug changes
-      if (slugConfig.allowPublishedRename !== false) {
+      // Handle alias creation for published slug changes (only if slug text changed)
+      if (slugConfig.allowPublishedRename !== false && oldSlug !== processedDoc.slug) {
         // Add old slug as alias
         const currentAliases = (processedDoc.aliases as string[]) ?? [];
         if (!currentAliases.includes(oldSlug)) {
-          await this.#indexManager.updateSlugAliases(
-            key.type,
-            slugScopeKey,
-            [oldSlug],
-            [],
-            key.id
-          );
+          await this.#indexManager.updateSlugAliases(key.type, slugScopeKey, [oldSlug], [], key.id);
         }
       }
     }
