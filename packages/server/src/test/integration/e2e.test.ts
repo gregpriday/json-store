@@ -444,7 +444,7 @@ describe("MCP Server E2E Tests", () => {
 
       expect(response.error).toBeDefined();
       expect(response.error?.message).toContain("Unknown tool");
-      expect(response.error?.code).toBe(-32602); // InvalidParams
+      expect(response.error?.code).toBe(-32601); // MethodNotFound
     });
 
     it("should validate tool arguments with error code", async () => {

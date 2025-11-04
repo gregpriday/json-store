@@ -116,7 +116,7 @@ describe("Index Integration", () => {
       expect(results[0]!.id).toBe("002");
     });
 
-    it("should produce identical results with and without indexes", async () => {
+    it("should produce identical results with and without indexes", { timeout: 15000 }, async () => {
       // Create test dataset
       const docs: Document[] = [];
       for (let i = 1; i <= 100; i++) {

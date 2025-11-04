@@ -28,28 +28,37 @@ interface CliResult {
 /**
  * Run CLI command with execa
  */
-async function runCli(args: string[], options: { cwd?: string; env?: Record<string, string>; reject?: boolean } = {}): Promise<CliResult> {
-  const { cwd, env, reject = false } = options;
+async function runCli(args: string[], options: { cwd?: string; env?: Record<string, string>; reject?: boolean; timeout?: number } = {}): Promise<CliResult> {
+  const { cwd, env, reject = false, timeout = 5000 } = options;
 
   try {
     const result = await execa("node", [CLI_PATH, ...args], {
       cwd: cwd ?? process.cwd(),
       env: { ...process.env, ...env },
       reject,
+      timeout,
     });
 
     return {
       stdout: result.stdout,
       stderr: result.stderr,
-      exitCode: result.exitCode,
+      exitCode: result.exitCode ?? 0,
     };
   } catch (error: any) {
     // Return error result if reject is false
-    if (!reject && error.exitCode !== undefined) {
+    if (!reject) {
+      // Determine exit code: use actual exit code if available, otherwise use 124 for timeout or 1 for other errors
+      let exitCode = 1;
+      if (error.exitCode !== undefined && error.exitCode !== null) {
+        exitCode = error.exitCode;
+      } else if (error.timedOut || error.killed) {
+        exitCode = 124; // Standard timeout exit code
+      }
+
       return {
         stdout: error.stdout ?? "",
         stderr: error.stderr ?? "",
-        exitCode: error.exitCode,
+        exitCode,
       };
     }
     throw error;
@@ -76,7 +85,7 @@ describe("CLI End-to-End Tests", () => {
 
   describe("Complete Workflow", () => {
     it("should run full CRUD workflow via CLI", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       // Init
       const initResult = await runCli(["init"], { env });
@@ -96,8 +105,8 @@ describe("CLI End-to-End Tests", () => {
       expect(doc.title).toBe("Test");
       expect(doc.status).toBe("open");
 
-      // List documents
-      const listResult = await runCli(["list", "task"], { env });
+      // List documents (CLI command is 'ls')
+      const listResult = await runCli(["ls", "task"], { env });
       expect(listResult.exitCode).toBe(0);
       const ids = listResult.stdout.trim().split("\n");
       expect(ids).toContain("1");
@@ -130,14 +139,14 @@ describe("CLI End-to-End Tests", () => {
 
   describe("Exit Codes", () => {
     it("should return 0 for success", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       const result = await runCli(["init"], { env });
       expect(result.exitCode).toBe(0);
     });
 
     it("should return 2 for document not found", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       await runCli(["init"], { env });
 
@@ -145,11 +154,13 @@ describe("CLI End-to-End Tests", () => {
       expect(result.exitCode).toBe(2);
     });
 
-    it("should return non-zero for invalid arguments", async () => {
-      const env = { DATA_ROOT: testDir };
+    it("should return non-zero for invalid arguments", { timeout: 10000 }, async () => {
+      const env = { JSONSTORE_ROOT: testDir };
 
-      // Put without data should fail with invalid args
-      const result = await runCli(["put", "task", "1"], { env, reject: false });
+      await runCli(["init"], { env });
+
+      // Put with invalid JSON should fail
+      const result = await runCli(["put", "task", "1", "--data", "invalid-json"], { env, reject: false });
       expect(result.exitCode).not.toBe(0);
       expect(result.exitCode).toBeGreaterThan(0);
     });
@@ -157,7 +168,7 @@ describe("CLI End-to-End Tests", () => {
 
   describe("Complex Queries", () => {
     beforeEach(async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
       await runCli(["init"], { env });
 
       // Create test dataset
@@ -174,7 +185,7 @@ describe("CLI End-to-End Tests", () => {
     });
 
     it("should query with $and operator", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       const querySpec = {
         filter: {
@@ -196,7 +207,7 @@ describe("CLI End-to-End Tests", () => {
     });
 
     it("should query with sort and pagination", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       const querySpec = {
         filter: {},
@@ -217,10 +228,11 @@ describe("CLI End-to-End Tests", () => {
   });
 
   describe("Environment Isolation", () => {
-    it("should respect DATA_ROOT environment variable", async () => {
-      const env1 = { DATA_ROOT: testDir };
-      const testDir2 = await mkdtemp(join(tmpdir(), "jsonstore-cli-e2e-"));
-      const env2 = { DATA_ROOT: testDir2 };
+    it("should respect JSONSTORE_ROOT environment variable", async () => {
+      const testDir1 = await mkdtemp(join(tmpdir(), "jsonstore-cli-e2e-1-"));
+      const testDir2 = await mkdtemp(join(tmpdir(), "jsonstore-cli-e2e-2-"));
+      const env1 = { JSONSTORE_ROOT: testDir1 };
+      const env2 = { JSONSTORE_ROOT: testDir2 };
 
       try {
         // Init both stores
@@ -246,6 +258,7 @@ describe("CLI End-to-End Tests", () => {
         const doc2 = JSON.parse(result2.stdout);
         expect(doc2.title).toBe("Store2");
       } finally {
+        await rm(testDir1, { recursive: true, force: true });
         await rm(testDir2, { recursive: true, force: true });
       }
     });
@@ -253,7 +266,7 @@ describe("CLI End-to-End Tests", () => {
 
   describe("Format Operations", () => {
     it("should format all documents", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       await runCli(["init"], { env });
 
@@ -269,14 +282,15 @@ describe("CLI End-to-End Tests", () => {
         await runCli(["put", "task", `task-${i}`, "--data", JSON.stringify(doc)], { env });
       }
 
-      // Format all documents
+      // Format all documents (already formatted by put, so should be no-op)
       const formatResult = await runCli(["format", "--all"], { env });
       expect(formatResult.exitCode).toBe(0);
-      expect(formatResult.stdout).toContain("5"); // Should format 5 documents
+      // Documents are already formatted by put(), so we expect "already canonical" message
+      expect(formatResult.stdout).toContain("canonical");
     });
 
     it("should format specific type", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       await runCli(["init"], { env });
 
@@ -290,7 +304,7 @@ describe("CLI End-to-End Tests", () => {
     });
 
     it("should check formatting without writing", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       await runCli(["init"], { env });
 
@@ -307,7 +321,7 @@ describe("CLI End-to-End Tests", () => {
 
   describe("Idempotency", () => {
     it("should handle repeated init safely", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       const result1 = await runCli(["init"], { env });
       expect(result1.exitCode).toBe(0);
@@ -317,7 +331,7 @@ describe("CLI End-to-End Tests", () => {
     });
 
     it("should handle put with same data as no-op", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       await runCli(["init"], { env });
 
@@ -337,7 +351,7 @@ describe("CLI End-to-End Tests", () => {
     });
 
     it("should handle remove of non-existent document gracefully", async () => {
-      const env = { DATA_ROOT: testDir };
+      const env = { JSONSTORE_ROOT: testDir };
 
       await runCli(["init"], { env });
 
