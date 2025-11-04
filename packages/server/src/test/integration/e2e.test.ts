@@ -70,7 +70,7 @@ class McpTestClient {
       });
 
       // Set up stderr handler for logs
-      this.process.stderr?.on("data", (chunk) => {
+      this.process.stderr?.on("data", (_chunk) => {
         // Ignore stderr logs in tests
       });
 
@@ -87,7 +87,9 @@ class McpTestClient {
           settled = true;
           this.process?.off("error", handleError);
           reject(
-            new Error(`Server exited before it became ready (code=${code}, signal=${signal ?? "null"})`)
+            new Error(
+              `Server exited before it became ready (code=${code}, signal=${signal ?? "null"})`
+            )
           );
         }
       };

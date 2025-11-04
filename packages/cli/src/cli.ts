@@ -390,7 +390,7 @@ program
 
     try {
       const { openStore } = await import("@jsonstore/sdk");
-      const storeInstance = openStore({ root: process.env.DATA_ROOT || "./data" });
+      const storeInstance = openStore({ root: resolveRoot() });
       store = storeInstance;
 
       if (options.detailed) {

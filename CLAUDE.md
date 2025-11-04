@@ -100,6 +100,7 @@ data/
 **Query Engine Architecture:**
 
 The query engine in `query.ts` has two execution paths:
+
 1. `matches()` - Evaluates a filter against a single document
 2. `evaluateQuery()` - Executes full QuerySpec with filter, projection, sort, skip, limit
 
@@ -108,6 +109,7 @@ All query operations work in-memory. For sorted queries, the engine filters duri
 **Caching Strategy:**
 
 The DocumentCache (`cache.ts`) is a write-through cache that:
+
 - Validates entries on read using mtime and size
 - Automatically invalidates on write operations (Store.put/remove calls cache.delete())
 - Can be disabled via JSONSTORE_CACHE_SIZE=0 environment variable
@@ -143,7 +145,7 @@ SDK is the core library with zero dependencies (except dev dependencies). Both C
 - Target: ES2022
 - Module: NodeNext
 - Composite project references enabled
-- Test files (*.test.ts) excluded from build
+- Test files (\*.test.ts) excluded from build
 
 ## Testing
 
@@ -167,8 +169,9 @@ The SDK has completed Store CRUD operations (put/get/remove/list) and full query
 ## Important Conventions
 
 1. **Import Extensions**: Always use `.js` extension in imports even though source files are `.ts` (required for ES modules)
+
    ```typescript
-   import { Store } from "./types.js";  // Not "./types"
+   import { Store } from "./types.js"; // Not "./types"
    ```
 
 2. **Path Validation**: All user-provided paths are validated with `sanitizePath()` to prevent directory traversal attacks.

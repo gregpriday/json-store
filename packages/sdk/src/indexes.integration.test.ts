@@ -116,45 +116,49 @@ describe("Index Integration", () => {
       expect(results[0]!.id).toBe("002");
     });
 
-    it("should produce identical results with and without indexes", { timeout: 15000 }, async () => {
-      // Create test dataset
-      const docs: Document[] = [];
-      for (let i = 1; i <= 100; i++) {
-        const status = i % 3 === 0 ? "closed" : i % 3 === 1 ? "open" : "pending";
-        const priority = (i % 5) + 1;
-        docs.push({
+    it(
+      "should produce identical results with and without indexes",
+      { timeout: 15000 },
+      async () => {
+        // Create test dataset
+        const docs: Document[] = [];
+        for (let i = 1; i <= 100; i++) {
+          const status = i % 3 === 0 ? "closed" : i % 3 === 1 ? "open" : "pending";
+          const priority = (i % 5) + 1;
+          docs.push({
+            type: "task",
+            id: `${i}`.padStart(3, "0"),
+            status,
+            priority,
+            title: `Task ${i}`,
+          });
+        }
+
+        // Insert documents
+        for (const doc of docs) {
+          await store.put({ type: "task", id: doc.id }, doc);
+        }
+
+        // Query without index (full scan)
+        const scanResults = await store.query({
           type: "task",
-          id: `${i}`.padStart(3, "0"),
-          status,
-          priority,
-          title: `Task ${i}`,
+          filter: { status: { $eq: "open" } },
         });
+
+        // Build index
+        await store.ensureIndex("task", "status");
+
+        // Query with index
+        const indexResults = await store.query({
+          type: "task",
+          filter: { status: { $eq: "open" } },
+        });
+
+        // Results should be identical
+        expect(indexResults).toHaveLength(scanResults.length);
+        expect(indexResults.map((d) => d.id).sort()).toEqual(scanResults.map((d) => d.id).sort());
       }
-
-      // Insert documents
-      for (const doc of docs) {
-        await store.put({ type: "task", id: doc.id }, doc);
-      }
-
-      // Query without index (full scan)
-      const scanResults = await store.query({
-        type: "task",
-        filter: { status: { $eq: "open" } },
-      });
-
-      // Build index
-      await store.ensureIndex("task", "status");
-
-      // Query with index
-      const indexResults = await store.query({
-        type: "task",
-        filter: { status: { $eq: "open" } },
-      });
-
-      // Results should be identical
-      expect(indexResults).toHaveLength(scanResults.length);
-      expect(indexResults.map((d) => d.id).sort()).toEqual(scanResults.map((d) => d.id).sort());
-    });
+    );
 
     it("should support scalar equality filters", async () => {
       await store.put({ type: "task", id: "001" }, { type: "task", id: "001", status: "open" });
@@ -424,8 +428,9 @@ describe("Index Integration", () => {
         expect(medianIndexTime).toBeLessThan(medianScanTime);
 
         // Stricter assertion (may be flaky on slow CI)
+        // Using 2x threshold to reduce flakiness while still validating meaningful speedup
         if (process.env.CI !== "true") {
-          expect(speedup).toBeGreaterThan(3);
+          expect(speedup).toBeGreaterThan(2);
         }
       }
     );

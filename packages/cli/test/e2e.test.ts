@@ -28,7 +28,10 @@ interface CliResult {
 /**
  * Run CLI command with execa
  */
-async function runCli(args: string[], options: { cwd?: string; env?: Record<string, string>; reject?: boolean; timeout?: number } = {}): Promise<CliResult> {
+async function runCli(
+  args: string[],
+  options: { cwd?: string; env?: Record<string, string>; reject?: boolean; timeout?: number } = {}
+): Promise<CliResult> {
   const { cwd, env, reject = false, timeout = 5000 } = options;
 
   try {
@@ -93,7 +96,13 @@ describe("CLI End-to-End Tests", () => {
 
       // Put document
       const putResult = await runCli(
-        ["put", "task", "1", "--data", JSON.stringify({ type: "task", id: "1", title: "Test", status: "open" })],
+        [
+          "put",
+          "task",
+          "1",
+          "--data",
+          JSON.stringify({ type: "task", id: "1", title: "Test", status: "open" }),
+        ],
         { env }
       );
       expect(putResult.exitCode).toBe(0);
@@ -113,7 +122,13 @@ describe("CLI End-to-End Tests", () => {
 
       // Query documents
       const queryResult = await runCli(
-        ["query", "--type", "task", "--data", JSON.stringify({ filter: { status: { $eq: "open" } } })],
+        [
+          "query",
+          "--type",
+          "task",
+          "--data",
+          JSON.stringify({ filter: { status: { $eq: "open" } } }),
+        ],
         { env }
       );
       expect(queryResult.exitCode).toBe(0);
@@ -160,7 +175,10 @@ describe("CLI End-to-End Tests", () => {
       await runCli(["init"], { env });
 
       // Put with invalid JSON should fail
-      const result = await runCli(["put", "task", "1", "--data", "invalid-json"], { env, reject: false });
+      const result = await runCli(["put", "task", "1", "--data", "invalid-json"], {
+        env,
+        reject: false,
+      });
       expect(result.exitCode).not.toBe(0);
       expect(result.exitCode).toBeGreaterThan(0);
     });
@@ -193,7 +211,10 @@ describe("CLI End-to-End Tests", () => {
         },
       };
 
-      const result = await runCli(["query", "--type", "task", "--data", JSON.stringify(querySpec)], { env });
+      const result = await runCli(
+        ["query", "--type", "task", "--data", JSON.stringify(querySpec)],
+        { env }
+      );
       expect(result.exitCode).toBe(0);
 
       const results = JSON.parse(result.stdout);
@@ -215,7 +236,10 @@ describe("CLI End-to-End Tests", () => {
         limit: 3,
       };
 
-      const result = await runCli(["query", "--type", "task", "--data", JSON.stringify(querySpec)], { env });
+      const result = await runCli(
+        ["query", "--type", "task", "--data", JSON.stringify(querySpec)],
+        { env }
+      );
       expect(result.exitCode).toBe(0);
 
       const results = JSON.parse(result.stdout);
@@ -240,14 +264,32 @@ describe("CLI End-to-End Tests", () => {
         await runCli(["init"], { env: env2 });
 
         // Put to first store
-        await runCli(["put", "task", "1", "--data", JSON.stringify({ type: "task", id: "1", title: "Store1" })], {
-          env: env1,
-        });
+        await runCli(
+          [
+            "put",
+            "task",
+            "1",
+            "--data",
+            JSON.stringify({ type: "task", id: "1", title: "Store1" }),
+          ],
+          {
+            env: env1,
+          }
+        );
 
         // Put to second store
-        await runCli(["put", "task", "1", "--data", JSON.stringify({ type: "task", id: "1", title: "Store2" })], {
-          env: env2,
-        });
+        await runCli(
+          [
+            "put",
+            "task",
+            "1",
+            "--data",
+            JSON.stringify({ type: "task", id: "1", title: "Store2" }),
+          ],
+          {
+            env: env2,
+          }
+        );
 
         // Verify isolation
         const result1 = await runCli(["get", "task", "1"], { env: env1 });
@@ -295,8 +337,14 @@ describe("CLI End-to-End Tests", () => {
       await runCli(["init"], { env });
 
       // Create documents of different types
-      await runCli(["put", "task", "1", "--data", JSON.stringify({ type: "task", id: "1", title: "Task" })], { env });
-      await runCli(["put", "note", "1", "--data", JSON.stringify({ type: "note", id: "1", title: "Note" })], { env });
+      await runCli(
+        ["put", "task", "1", "--data", JSON.stringify({ type: "task", id: "1", title: "Task" })],
+        { env }
+      );
+      await runCli(
+        ["put", "note", "1", "--data", JSON.stringify({ type: "note", id: "1", title: "Note" })],
+        { env }
+      );
 
       // Format only tasks
       const formatResult = await runCli(["format", "task"], { env });

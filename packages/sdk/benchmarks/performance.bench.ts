@@ -11,7 +11,6 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openStore } from "../src/store.js";
-import type { Store } from "../src/types.js";
 import { QUERY_SLO } from "../src/contracts/query.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -114,7 +113,9 @@ async function benchmark(
 
   const passedSlo = slo === undefined || p95 <= slo;
 
-  console.log(`  Avg: ${avg.toFixed(2)}ms | p95: ${p95.toFixed(2)}ms | Min: ${min.toFixed(2)}ms | Max: ${max.toFixed(2)}ms`);
+  console.log(
+    `  Avg: ${avg.toFixed(2)}ms | p95: ${p95.toFixed(2)}ms | Min: ${min.toFixed(2)}ms | Max: ${max.toFixed(2)}ms`
+  );
   if (slo !== undefined) {
     console.log(`  SLO: ${slo}ms | ${passedSlo ? "✓ PASS" : "✗ FAIL"}`);
   }
@@ -373,7 +374,9 @@ async function main() {
   console.log("\n" + "=".repeat(80));
   console.log("Summary");
   console.log("=".repeat(80));
-  console.log(`Total: ${report.summary.total} | Passed: ${report.summary.passed} | Failed: ${report.summary.failed}`);
+  console.log(
+    `Total: ${report.summary.total} | Passed: ${report.summary.passed} | Failed: ${report.summary.failed}`
+  );
 
   if (report.summary.failed > 0) {
     console.log("\n⚠️  Some benchmarks failed to meet SLO targets");

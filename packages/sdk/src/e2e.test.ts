@@ -8,7 +8,7 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore } from "./store.js";
-import type { Store, Document } from "./types.js";
+import type { Store } from "./types.js";
 import { stableStringify } from "./format.js";
 
 describe("SDK End-to-End Integration Tests", () => {
@@ -211,10 +211,12 @@ describe("SDK End-to-End Integration Tests", () => {
     });
 
     it("should handle null values in queries", async () => {
-      await store.put(
-        { type: "user", id: "user-null" },
-        { type: "user", id: "user-null", name: "Null User", description: null } as any
-      );
+      await store.put({ type: "user", id: "user-null" }, {
+        type: "user",
+        id: "user-null",
+        name: "Null User",
+        description: null,
+      } as any);
 
       const results = await store.query({
         type: "user",
@@ -495,10 +497,13 @@ describe("SDK End-to-End Integration Tests", () => {
   describe("Format Operations", () => {
     it("should format documents with stable key ordering", async () => {
       // Put document with unsorted keys
-      await store.put(
-        { type: "task", id: "1" },
-        { type: "task", id: "1", z: "last", a: "first", m: "middle" } as any
-      );
+      await store.put({ type: "task", id: "1" }, {
+        type: "task",
+        id: "1",
+        z: "last",
+        a: "first",
+        m: "middle",
+      } as any);
 
       // The document is already formatted by put(), so format() returns 0
       // This actually tests idempotence, which is correct behavior
@@ -525,10 +530,7 @@ describe("SDK End-to-End Integration Tests", () => {
 
     it("should be idempotent on already-formatted documents", async () => {
       // Put document (already formatted by put())
-      await store.put(
-        { type: "task", id: "1" },
-        { type: "task", id: "1", title: "Test" }
-      );
+      await store.put({ type: "task", id: "1" }, { type: "task", id: "1", title: "Test" });
 
       // Format - should be no-op since put() already formatted
       const first = await store.format({ all: true });

@@ -65,6 +65,7 @@ export async function withTempStore<T>(
       }
     }
     if (!fnError && cleanupError) {
+      // eslint-disable-next-line no-unsafe-finally
       throw cleanupError;
     }
   }
