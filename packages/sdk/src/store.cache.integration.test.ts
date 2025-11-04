@@ -59,18 +59,9 @@ describe("JSONStore cache integration", () => {
       // Create test files
       await fs.mkdir(path.join(tempDir, "user"), { recursive: true });
       await fs.mkdir(path.join(tempDir, "post"), { recursive: true });
-      await fs.writeFile(
-        path.join(tempDir, "user", "1.json"),
-        JSON.stringify(user1)
-      );
-      await fs.writeFile(
-        path.join(tempDir, "user", "2.json"),
-        JSON.stringify(user2)
-      );
-      await fs.writeFile(
-        path.join(tempDir, "post", "1.json"),
-        JSON.stringify(post1)
-      );
+      await fs.writeFile(path.join(tempDir, "user", "1.json"), JSON.stringify(user1));
+      await fs.writeFile(path.join(tempDir, "user", "2.json"), JSON.stringify(user2));
+      await fs.writeFile(path.join(tempDir, "post", "1.json"), JSON.stringify(post1));
 
       // Read all documents
       await store.get({ type: "user", id: "1" });
@@ -186,10 +177,7 @@ describe("JSONStore cache integration", () => {
       // Create and cache document
       const typeDir = path.join(tempDir, "user");
       await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(
-        path.join(typeDir, "123.json"),
-        JSON.stringify(testDoc)
-      );
+      await fs.writeFile(path.join(typeDir, "123.json"), JSON.stringify(testDoc));
 
       await store.get({ type: "user", id: "123" });
 
@@ -207,10 +195,7 @@ describe("JSONStore cache integration", () => {
       }
 
       // If we manually update the file, next get should read fresh
-      await fs.writeFile(
-        path.join(typeDir, "123.json"),
-        JSON.stringify(updatedDoc)
-      );
+      await fs.writeFile(path.join(typeDir, "123.json"), JSON.stringify(updatedDoc));
 
       const result = await store.get({ type: "user", id: "123" });
       expect(result).toEqual(updatedDoc);
@@ -257,10 +242,7 @@ describe("JSONStore cache integration", () => {
 
       const typeDir = path.join(tempDir, "user");
       await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(
-        path.join(typeDir, "123.json"),
-        JSON.stringify(testDoc)
-      );
+      await fs.writeFile(path.join(typeDir, "123.json"), JSON.stringify(testDoc));
 
       // Read multiple times - should use same cache key
       const doc1 = await store.get({ type: "user", id: "123" });
@@ -281,10 +263,7 @@ describe("JSONStore cache integration", () => {
 
       const typeDir = path.join(tempDir, "user");
       await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(
-        path.join(typeDir, "123.json"),
-        JSON.stringify(testDoc)
-      );
+      await fs.writeFile(path.join(typeDir, "123.json"), JSON.stringify(testDoc));
 
       // Read to populate cache
       await store.get({ type: "user", id: "123" });
@@ -311,10 +290,7 @@ describe("JSONStore cache integration", () => {
 
       const typeDir = path.join(tempDir, "data");
       await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(
-        path.join(typeDir, "large.json"),
-        JSON.stringify(largeDoc)
-      );
+      await fs.writeFile(path.join(typeDir, "large.json"), JSON.stringify(largeDoc));
 
       // Cold read (disk I/O + parse)
       const doc1 = await store.get({ type: "data", id: "large" });
@@ -335,14 +311,11 @@ describe("JSONStore cache integration", () => {
     it("should handle invalid JSON gracefully", async () => {
       const typeDir = path.join(tempDir, "user");
       await fs.mkdir(typeDir, { recursive: true });
-      await fs.writeFile(
-        path.join(typeDir, "invalid.json"),
-        "{ invalid json }"
-      );
+      await fs.writeFile(path.join(typeDir, "invalid.json"), "{ invalid json }");
 
-      await expect(
-        store.get({ type: "user", id: "invalid" })
-      ).rejects.toThrow("Failed to parse JSON");
+      await expect(store.get({ type: "user", id: "invalid" })).rejects.toThrow(
+        "Failed to parse JSON"
+      );
     });
 
     it("should reject documents with mismatched type/id", async () => {
@@ -355,9 +328,9 @@ describe("JSONStore cache integration", () => {
         JSON.stringify({ type: "post", id: "123", data: "test" })
       );
 
-      await expect(
-        store.get({ type: "user", id: "123" })
-      ).rejects.toThrow("Document validation failed");
+      await expect(store.get({ type: "user", id: "123" })).rejects.toThrow(
+        "Document validation failed"
+      );
 
       // Write document with wrong id
       await fs.writeFile(
@@ -365,14 +338,76 @@ describe("JSONStore cache integration", () => {
         JSON.stringify({ type: "user", id: "999", data: "test" })
       );
 
-      await expect(
-        store.get({ type: "user", id: "456" })
-      ).rejects.toThrow("Document validation failed");
+      await expect(store.get({ type: "user", id: "456" })).rejects.toThrow(
+        "Document validation failed"
+      );
     });
 
     it("should handle missing directories gracefully", async () => {
       const result = await store.get({ type: "nonexistent", id: "123" });
       expect(result).toBeNull();
+    });
+  });
+
+  describe("Security: path traversal prevention", () => {
+    it("should reject keys with .. in type", async () => {
+      await expect(store.get({ type: "../etc", id: "passwd" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject keys with .. in id", async () => {
+      await expect(store.get({ type: "user", id: "../../etc/passwd" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject keys with / in type", async () => {
+      await expect(store.get({ type: "user/admin", id: "123" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject keys with / in id", async () => {
+      await expect(store.get({ type: "user", id: "admin/123" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject keys with \\ in type", async () => {
+      await expect(store.get({ type: "user\\admin", id: "123" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject keys with \\ in id", async () => {
+      await expect(store.get({ type: "user", id: "admin\\123" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject absolute paths in type", async () => {
+      await expect(store.get({ type: "/tmp/malicious", id: "123" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject absolute paths in id", async () => {
+      await expect(store.get({ type: "user", id: "/tmp/malicious" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should reject Windows absolute paths in type", async () => {
+      await expect(store.get({ type: "C:\\Windows", id: "123" })).rejects.toThrow(
+        "must not contain path traversal sequences or separators"
+      );
+    });
+
+    it("should work with legitimate keys", async () => {
+      // This should not throw
+      const result = await store.get({ type: "user", id: "123" });
+      expect(result).toBeNull(); // File doesn't exist, but no error
     });
   });
 });

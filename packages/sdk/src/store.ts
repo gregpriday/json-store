@@ -91,28 +91,20 @@ class JSONStore implements Store {
       try {
         doc = JSON.parse(content) as Document;
       } catch (err: any) {
-        throw new Error(
-          `Failed to parse JSON document at ${filePath}: ${err.message}`
-        );
+        throw new Error(`Failed to parse JSON document at ${filePath}: ${err.message}`);
       }
 
       // Validate document has required fields and matches key
       try {
         validateDocument(key, doc);
       } catch (err: any) {
-        throw new Error(
-          `Document validation failed for ${filePath}: ${err.message}`
-        );
+        throw new Error(`Document validation failed for ${filePath}: ${err.message}`);
       }
 
       // TOCTOU guard: re-check stats after reading
       // If file changed during read, retry (unless this is last attempt)
       const st2 = await fs.stat(filePath).catch(() => null);
-      if (
-        st2 &&
-        st2.mtimeMs === st1.mtimeMs &&
-        st2.size === st1.size
-      ) {
+      if (st2 && st2.mtimeMs === st1.mtimeMs && st2.size === st1.size) {
         // Stats match - safe to cache and return
         this.#cache.set(filePath, doc, st2);
         return doc;
@@ -171,12 +163,45 @@ class JSONStore implements Store {
    * Get absolute file path for a document key
    * @param key - Document key
    * @returns Normalized absolute file path
+   * @throws {Error} If key contains path traversal sequences
    */
   private getFilePath(key: Key): string {
+    // Validate key components to prevent path traversal
+    if (
+      key.type.includes("..") ||
+      key.type.includes("/") ||
+      key.type.includes("\\") ||
+      path.isAbsolute(key.type)
+    ) {
+      throw new Error(
+        `Invalid key.type "${key.type}": must not contain path traversal sequences or separators`
+      );
+    }
+    if (
+      key.id.includes("..") ||
+      key.id.includes("/") ||
+      key.id.includes("\\") ||
+      path.isAbsolute(key.id)
+    ) {
+      throw new Error(
+        `Invalid key.id "${key.id}": must not contain path traversal sequences or separators`
+      );
+    }
+
     // Build path: root/type/id.json
     const filePath = path.join(this.#options.root, key.type, `${key.id}.json`);
     // Normalize to absolute path with posix separators for cache key consistency
-    return path.resolve(filePath).replace(/\\/g, "/");
+    const resolvedPath = path.resolve(filePath).replace(/\\/g, "/");
+
+    // Double-check: ensure resolved path is still under root
+    const normalizedRoot = this.#options.root.replace(/\\/g, "/");
+    if (!resolvedPath.startsWith(normalizedRoot + "/")) {
+      throw new Error(
+        `Path traversal detected: resolved path "${resolvedPath}" is outside root "${normalizedRoot}"`
+      );
+    }
+
+    return resolvedPath;
   }
 }
 
