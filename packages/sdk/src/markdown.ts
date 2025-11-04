@@ -140,11 +140,11 @@ export function resolveMdPath(
 }
 
 /**
- * Check if a path is a symlink and reject it if symlinks are not allowed
+ * Check if a path or any of its parent directories are symlinks
  *
  * @param absPath - Absolute path to check
  * @param policy - Path validation policy
- * @throws {MarkdownPathError} if path is a symlink and symlinks are not allowed
+ * @throws {MarkdownPathError} if path or any parent is a symlink and symlinks are not allowed
  */
 export async function checkSymlink(
   absPath: string,
@@ -154,20 +154,43 @@ export async function checkSymlink(
     return;
   }
 
-  try {
-    const stats = await lstat(absPath);
-    if (stats.isSymbolicLink()) {
-      throw new MarkdownPathError(absPath, "symlinks are not allowed");
+  // Check all path components from root to target
+  // This prevents escapes through symlinked directories
+  const pathParts = absPath.split(posix.sep).filter(p => p.length > 0);
+  let currentPath = posix.sep;
+
+  for (const part of pathParts) {
+    currentPath = join(currentPath, part);
+
+    // Only check paths within allowed roots
+    let withinRoot = false;
+    for (const root of policy.allowedRoots) {
+      if (currentPath.startsWith(root)) {
+        withinRoot = true;
+        break;
+      }
     }
-  } catch (error) {
-    if (
-      error instanceof MarkdownPathError ||
-      (error as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      throw error;
+
+    if (!withinRoot) {
+      continue; // Skip checking system directories above our roots
     }
-    // lstat failed for other reason - let it bubble up
-    throw new MarkdownPathError(absPath, `failed to check symlink: ${error}`);
+
+    try {
+      const stats = await lstat(currentPath);
+      if (stats.isSymbolicLink()) {
+        throw new MarkdownPathError(currentPath, "symlinks are not allowed");
+      }
+    } catch (error) {
+      if (error instanceof MarkdownPathError) {
+        throw error;
+      }
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        // Path doesn't exist yet - that's okay, we're checking for writes
+        continue;
+      }
+      // lstat failed for other reason - let it bubble up
+      throw new MarkdownPathError(currentPath, `failed to check symlink: ${error}`);
+    }
   }
 }
 

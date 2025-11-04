@@ -1413,6 +1413,9 @@ class JSONStore implements Store {
     // Resolve and validate path
     const { absPath } = resolveMdPath(docDir, ref, policy);
 
+    // Check for symlinks before writing
+    await checkSymlink(absPath, policy);
+
     // Write content atomically
     const contentStr = Buffer.isBuffer(content) ? content.toString("utf-8") : content;
     await atomicWrite(absPath, contentStr);
@@ -1623,13 +1626,33 @@ class JSONStore implements Store {
     const docDir = this.getDocumentDir(key);
     const policy = this.getMarkdownPathPolicy();
 
-    // Validate all markdown paths before starting transaction
+    // Validate all markdown paths and preserve untouched fields
     const mdMap = doc.md as MarkdownMap | undefined;
+    const preservedMarkdown = new Map<string, string>();
+    const resolvedPaths = new Map<string, string>();
+
     if (mdMap) {
       for (const [fieldKey, ref] of Object.entries(mdMap)) {
-        if (markdown[fieldKey] !== undefined) {
-          // This will throw if path is invalid
-          resolveMdPath(docDir, ref, policy);
+        // Validate and resolve path
+        const { relPath, absPath } = resolveMdPath(docDir, ref, policy);
+        resolvedPaths.set(fieldKey, relPath);
+
+        // Check for symlinks in target path (before transaction)
+        // This prevents writing through symlinked directories
+        await checkSymlink(absPath, policy);
+
+        // If markdown not provided, read existing content to preserve it
+        if (markdown[fieldKey] === undefined) {
+          try {
+            const existingContent = await this.readMarkdownField(key, doc, fieldKey);
+            preservedMarkdown.set(fieldKey, existingContent);
+          } catch (err) {
+            // If file doesn't exist yet, that's okay for new documents
+            // But rethrow other errors
+            if (!(err instanceof MarkdownMissingError)) {
+              throw err;
+            }
+          }
         }
       }
     }
@@ -1643,12 +1666,15 @@ class JSONStore implements Store {
 
       // Write markdown files based on references in doc.md
       if (mdMap) {
-        for (const [fieldKey, ref] of Object.entries(mdMap)) {
-          if (markdown[fieldKey] !== undefined) {
-            const relPath = typeof ref === "string" ? ref : ref.path;
-            const mdContent = markdown[fieldKey];
-            await txn.writeFile(relPath, mdContent);
+        for (const [fieldKey] of Object.entries(mdMap)) {
+          const mdContent = markdown[fieldKey] ?? preservedMarkdown.get(fieldKey);
+          if (mdContent === undefined) {
+            throw new MarkdownMissingError(
+              fieldKey,
+              resolvedPaths.get(fieldKey) || ""
+            );
           }
+          await txn.writeFile(resolvedPaths.get(fieldKey)!, mdContent);
         }
       }
 
