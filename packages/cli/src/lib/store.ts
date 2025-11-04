@@ -34,10 +34,7 @@ export interface CliStore {
   /**
    * Remove a document
    */
-  remove(
-    ref: { type: string; id: string },
-    opts?: { gitCommit?: string }
-  ): Promise<void>;
+  remove(ref: { type: string; id: string }, opts?: { gitCommit?: string }): Promise<void>;
 
   /**
    * List all document IDs for a type
@@ -91,9 +88,7 @@ export function openCliStore(root: string): CliStore {
 
       const idValue = (payload as { id?: unknown }).id;
       if (idValue !== undefined && idValue !== ref.id) {
-        throw new Error(
-          `Document id "${String(idValue)}" does not match CLI argument "${ref.id}"`
-        );
+        throw new Error(`Document id "${String(idValue)}" does not match CLI argument "${ref.id}"`);
       }
 
       const normalized = {

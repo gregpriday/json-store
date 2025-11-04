@@ -16,30 +16,18 @@ describe("arg parsing", () => {
     });
 
     it("should reject negative numbers", () => {
-      expect(() => parseNonNegativeInt("-1", "test")).toThrow(
-        InvalidArgumentError
-      );
-      expect(() => parseNonNegativeInt("-100", "test")).toThrow(
-        "must be a non-negative integer"
-      );
+      expect(() => parseNonNegativeInt("-1", "test")).toThrow(InvalidArgumentError);
+      expect(() => parseNonNegativeInt("-100", "test")).toThrow("must be a non-negative integer");
     });
 
     it("should reject NaN", () => {
-      expect(() => parseNonNegativeInt("abc", "test")).toThrow(
-        InvalidArgumentError
-      );
-      expect(() => parseNonNegativeInt("abc", "test")).toThrow(
-        "must be a non-negative integer"
-      );
+      expect(() => parseNonNegativeInt("abc", "test")).toThrow(InvalidArgumentError);
+      expect(() => parseNonNegativeInt("abc", "test")).toThrow("must be a non-negative integer");
     });
 
     it("should reject values > 10000", () => {
-      expect(() => parseNonNegativeInt("10001", "test")).toThrow(
-        InvalidArgumentError
-      );
-      expect(() => parseNonNegativeInt("100000", "test")).toThrow(
-        "must be <= 10000"
-      );
+      expect(() => parseNonNegativeInt("10001", "test")).toThrow(InvalidArgumentError);
+      expect(() => parseNonNegativeInt("100000", "test")).toThrow("must be <= 10000");
     });
 
     it("should allow exactly 10000", () => {
@@ -50,7 +38,7 @@ describe("arg parsing", () => {
   describe("parseJson", () => {
     it("should parse valid JSON", () => {
       expect(parseJson('{"a":1}', "test")).toEqual({ a: 1 });
-      expect(parseJson('[1,2,3]', "test")).toEqual([1, 2, 3]);
+      expect(parseJson("[1,2,3]", "test")).toEqual([1, 2, 3]);
       expect(parseJson('"string"', "test")).toBe("string");
       expect(parseJson("123", "test")).toBe(123);
       expect(parseJson("true", "test")).toBe(true);

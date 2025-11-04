@@ -22,17 +22,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Read package.json for version
-const packageJson = JSON.parse(
-  readFileSync(join(__dirname, "../package.json"), "utf-8")
-);
+const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
 
 const program = new Command();
 
 // Configure error output with color
 program
   .configureOutput({
-    writeErr: (str) =>
-      process.stderr.write(colorize(str, "red", process.stderr)),
+    writeErr: (str) => process.stderr.write(colorize(str, "red", process.stderr)),
   })
   .exitOverride((err) => {
     if (err.code !== "commander.help" && err.code !== "commander.version") {
@@ -101,15 +98,16 @@ program
             "No input provided. Use --file, --data, or pipe JSON to stdin"
           );
         }
-        const stdin = await readStdin();
+        let stdin: string;
+        try {
+          stdin = await readStdin(); // Size limit enforced during streaming
+        } catch (err) {
+          throw new InvalidArgumentError(
+            err instanceof Error ? err.message : "Failed to read from stdin"
+          );
+        }
         if (!stdin.trim()) {
           throw new InvalidArgumentError("stdin is empty");
-        }
-        // Limit stdin to 10MB
-        if (stdin.length > 10 * 1024 * 1024) {
-          throw new InvalidArgumentError(
-            "stdin too large (max 10MB)"
-          );
         }
         doc = parseJson(stdin, "stdin");
       }
@@ -118,11 +116,7 @@ program
       const root = resolveRoot(opts.root);
       const store = openCliStore(root);
 
-      await store.put(
-        { type, id },
-        doc,
-        { gitCommit: options.gitCommit }
-      );
+      await store.put({ type, id }, doc, { gitCommit: options.gitCommit });
 
       if (!opts.quiet) {
         console.log(`Stored ${type}/${id}`);
@@ -171,11 +165,7 @@ program
             input: process.stdin,
             output: process.stderr,
           });
-          const answer = (
-            await rl.question(`Remove ${type}/${id}? (y/N) `)
-          )
-            .trim()
-            .toLowerCase();
+          const answer = (await rl.question(`Remove ${type}/${id}? (y/N) `)).trim().toLowerCase();
           rl.close();
 
           if (answer !== "y") {
@@ -183,9 +173,7 @@ program
           }
         } else {
           // Non-TTY requires --force
-          throw new InvalidArgumentError(
-            "Use --force to confirm removal in non-interactive mode"
-          );
+          throw new InvalidArgumentError("Use --force to confirm removal in non-interactive mode");
         }
       }
 
@@ -205,9 +193,7 @@ program
   .command("ls <type>")
   .description("List all document IDs for a type")
   .option("--json", "Output as JSON array")
-  .option("--limit <n>", "Maximum number of results", (val) =>
-    parseNonNegativeInt(val, "--limit")
-  )
+  .option("--limit <n>", "Maximum number of results", (val) => parseNonNegativeInt(val, "--limit"))
   .action(async (type, options) => {
     await withTiming("cli.ls", async () => {
       const opts = program.opts();
@@ -236,12 +222,8 @@ program
   .option("--file <path>", "Read query from JSON file")
   .option("--data <json>", "Inline JSON query")
   .option("--type <type>", "Restrict to specific type")
-  .option("--limit <n>", "Maximum results", (val) =>
-    parseNonNegativeInt(val, "--limit")
-  )
-  .option("--skip <n>", "Skip N results", (val) =>
-    parseNonNegativeInt(val, "--skip")
-  )
+  .option("--limit <n>", "Maximum results", (val) => parseNonNegativeInt(val, "--limit"))
+  .option("--skip <n>", "Skip N results", (val) => parseNonNegativeInt(val, "--skip"))
   .action(async (options) => {
     await withTiming("cli.query", async () => {
       const opts = program.opts();
@@ -267,15 +249,16 @@ program
             "No input provided. Use --file, --data, or pipe JSON to stdin"
           );
         }
-        const stdin = await readStdin();
+        let stdin: string;
+        try {
+          stdin = await readStdin(); // Size limit enforced during streaming
+        } catch (err) {
+          throw new InvalidArgumentError(
+            err instanceof Error ? err.message : "Failed to read from stdin"
+          );
+        }
         if (!stdin.trim()) {
           throw new InvalidArgumentError("stdin is empty");
-        }
-        // Limit stdin to 10MB
-        if (stdin.length > 10 * 1024 * 1024) {
-          throw new InvalidArgumentError(
-            "stdin too large (max 10MB)"
-          );
         }
         rawQuery = parseJson(stdin, "stdin");
       }
@@ -319,21 +302,15 @@ program
 
       // Validate scope selection
       if (options.all && (type || id)) {
-        throw new InvalidArgumentError(
-          "Cannot use --all with [type] or [id]"
-        );
+        throw new InvalidArgumentError("Cannot use --all with [type] or [id]");
       }
 
       if (id && !type) {
-        throw new InvalidArgumentError(
-          "Cannot specify [id] without [type]"
-        );
+        throw new InvalidArgumentError("Cannot specify [id] without [type]");
       }
 
       if (!options.all && !type) {
-        throw new InvalidArgumentError(
-          "Specify --all, <type>, or <type> <id>"
-        );
+        throw new InvalidArgumentError("Specify --all, <type>, or <type> <id>");
       }
 
       const root = resolveRoot(opts.root);

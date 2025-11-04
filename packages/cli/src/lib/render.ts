@@ -10,9 +10,7 @@ type Color = "red" | "green" | "yellow";
  * @param options - Rendering options
  */
 export function printJson(data: unknown, options?: { raw?: boolean }): void {
-  const json = options?.raw
-    ? JSON.stringify(data)
-    : JSON.stringify(data, null, 2);
+  const json = options?.raw ? JSON.stringify(data) : JSON.stringify(data, null, 2);
   console.log(json);
 }
 

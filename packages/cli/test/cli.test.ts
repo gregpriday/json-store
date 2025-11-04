@@ -31,15 +31,11 @@ async function runCli(
   const { stdin, cwd, expectError } = options ?? {};
 
   try {
-    const { stdout, stderr } = await execFileAsync(
-      "node",
-      [CLI_PATH, ...args],
-      {
-        cwd: cwd ?? process.cwd(),
-        input: stdin,
-        encoding: "utf8",
-      }
-    );
+    const { stdout, stderr } = await execFileAsync("node", [CLI_PATH, ...args], {
+      cwd: cwd ?? process.cwd(),
+      input: stdin,
+      encoding: "utf8",
+    });
 
     return { stdout, stderr, exitCode: 0 };
   } catch (err: any) {
@@ -137,15 +133,7 @@ describe("CLI", () => {
       const inputFile = path.join(tmpDir, "input.json");
       await fs.writeFile(inputFile, JSON.stringify(doc));
 
-      const result = await runCli([
-        "put",
-        "user",
-        "bob",
-        "--root",
-        tmpDir,
-        "--file",
-        inputFile,
-      ]);
+      const result = await runCli(["put", "user", "bob", "--root", tmpDir, "--file", inputFile]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Stored user/bob");
@@ -198,15 +186,7 @@ describe("CLI", () => {
     beforeEach(async () => {
       await runCli(["init", "--root", tmpDir]);
       const doc = { type: "user", id: "alice", name: "Alice", age: 30 };
-      await runCli([
-        "put",
-        "user",
-        "alice",
-        "--root",
-        tmpDir,
-        "--data",
-        JSON.stringify(doc),
-      ]);
+      await runCli(["put", "user", "alice", "--root", tmpDir, "--data", JSON.stringify(doc)]);
     });
 
     it("should retrieve a document", async () => {
@@ -218,14 +198,7 @@ describe("CLI", () => {
     });
 
     it("should output raw JSON with --raw", async () => {
-      const result = await runCli([
-        "get",
-        "user",
-        "alice",
-        "--root",
-        tmpDir,
-        "--raw",
-      ]);
+      const result = await runCli(["get", "user", "alice", "--root", tmpDir, "--raw"]);
 
       expect(result.exitCode).toBe(0);
       // Raw output should not have newlines/indentation
@@ -235,10 +208,9 @@ describe("CLI", () => {
     });
 
     it("should return exit code 2 for not found", async () => {
-      const result = await runCli(
-        ["get", "user", "nonexistent", "--root", tmpDir],
-        { expectError: true }
-      );
+      const result = await runCli(["get", "user", "nonexistent", "--root", tmpDir], {
+        expectError: true,
+      });
 
       expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain("not found");
@@ -249,26 +221,11 @@ describe("CLI", () => {
     beforeEach(async () => {
       await runCli(["init", "--root", tmpDir]);
       const doc = { type: "user", id: "alice", name: "Alice" };
-      await runCli([
-        "put",
-        "user",
-        "alice",
-        "--root",
-        tmpDir,
-        "--data",
-        JSON.stringify(doc),
-      ]);
+      await runCli(["put", "user", "alice", "--root", tmpDir, "--data", JSON.stringify(doc)]);
     });
 
     it("should remove a document with --force", async () => {
-      const result = await runCli([
-        "rm",
-        "user",
-        "alice",
-        "--root",
-        tmpDir,
-        "--force",
-      ]);
+      const result = await runCli(["rm", "user", "alice", "--root", tmpDir, "--force"]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Removed user/alice");
@@ -299,15 +256,7 @@ describe("CLI", () => {
       // Create multiple documents
       for (const id of ["alice", "bob", "charlie"]) {
         const doc = { type: "user", id, name: id };
-        await runCli([
-          "put",
-          "user",
-          id,
-          "--root",
-          tmpDir,
-          "--data",
-          JSON.stringify(doc),
-        ]);
+        await runCli(["put", "user", id, "--root", tmpDir, "--data", JSON.stringify(doc)]);
       }
     });
 
@@ -333,15 +282,7 @@ describe("CLI", () => {
     });
 
     it("should respect --limit", async () => {
-      const result = await runCli([
-        "ls",
-        "user",
-        "--root",
-        tmpDir,
-        "--json",
-        "--limit",
-        "2",
-      ]);
+      const result = await runCli(["ls", "user", "--root", tmpDir, "--json", "--limit", "2"]);
 
       expect(result.exitCode).toBe(0);
       const ids = JSON.parse(result.stdout);
@@ -349,10 +290,9 @@ describe("CLI", () => {
     });
 
     it("should reject negative limit", async () => {
-      const result = await runCli(
-        ["ls", "user", "--root", tmpDir, "--limit", "-1"],
-        { expectError: true }
-      );
+      const result = await runCli(["ls", "user", "--root", tmpDir, "--limit", "-1"], {
+        expectError: true,
+      });
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("non-negative");
@@ -371,15 +311,7 @@ describe("CLI", () => {
       ];
 
       for (const user of users) {
-        await runCli([
-          "put",
-          "user",
-          user.id,
-          "--root",
-          tmpDir,
-          "--data",
-          JSON.stringify(user),
-        ]);
+        await runCli(["put", "user", user.id, "--root", tmpDir, "--data", JSON.stringify(user)]);
       }
     });
 
@@ -389,13 +321,7 @@ describe("CLI", () => {
         filter: { role: "user" },
       };
 
-      const result = await runCli([
-        "query",
-        "--root",
-        tmpDir,
-        "--data",
-        JSON.stringify(query),
-      ]);
+      const result = await runCli(["query", "--root", tmpDir, "--data", JSON.stringify(query)]);
 
       expect(result.exitCode).toBe(0);
       const results = JSON.parse(result.stdout);
@@ -443,10 +369,9 @@ describe("CLI", () => {
     });
 
     it("should reject invalid query JSON", async () => {
-      const result = await runCli(
-        ["query", "--root", tmpDir, "--data", "{invalid}"],
-        { expectError: true }
-      );
+      const result = await runCli(["query", "--root", tmpDir, "--data", "{invalid}"], {
+        expectError: true,
+      });
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Invalid JSON");
@@ -459,15 +384,7 @@ describe("CLI", () => {
       await runCli(["init", "--root", tmpDir]);
 
       const doc = { type: "user", id: "alice", name: "Alice" };
-      await runCli([
-        "put",
-        "user",
-        "alice",
-        "--root",
-        tmpDir,
-        "--data",
-        JSON.stringify(doc),
-      ]);
+      await runCli(["put", "user", "alice", "--root", tmpDir, "--data", JSON.stringify(doc)]);
     });
 
     it("should format all documents with --all", async () => {
@@ -492,10 +409,9 @@ describe("CLI", () => {
     });
 
     it("should reject ambiguous scope", async () => {
-      const result = await runCli(
-        ["format", "user", "--root", tmpDir, "--all"],
-        { expectError: true }
-      );
+      const result = await runCli(["format", "user", "--root", tmpDir, "--all"], {
+        expectError: true,
+      });
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Cannot use --all");
@@ -522,15 +438,7 @@ describe("CLI", () => {
       ];
 
       for (const user of users) {
-        await runCli([
-          "put",
-          "user",
-          user.id,
-          "--root",
-          tmpDir,
-          "--data",
-          JSON.stringify(user),
-        ]);
+        await runCli(["put", "user", user.id, "--root", tmpDir, "--data", JSON.stringify(user)]);
       }
     });
 
@@ -545,14 +453,7 @@ describe("CLI", () => {
     });
 
     it("should show stats in JSON format", async () => {
-      const result = await runCli([
-        "stats",
-        "--root",
-        tmpDir,
-        "--type",
-        "user",
-        "--json",
-      ]);
+      const result = await runCli(["stats", "--root", tmpDir, "--type", "user", "--json"]);
 
       expect(result.exitCode).toBe(0);
       const stats = JSON.parse(result.stdout);
@@ -603,10 +504,9 @@ describe("CLI", () => {
     });
 
     it("should return 2 for not found", async () => {
-      const result = await runCli(
-        ["get", "user", "nonexistent", "--root", tmpDir],
-        { expectError: true }
-      );
+      const result = await runCli(["get", "user", "nonexistent", "--root", tmpDir], {
+        expectError: true,
+      });
       expect(result.exitCode).toBe(2);
     });
   });

@@ -34,9 +34,7 @@ export function parseJson(value: string, source: string): unknown {
     return JSON.parse(cleaned);
   } catch (err) {
     if (err instanceof SyntaxError) {
-      throw new InvalidArgumentError(
-        `Invalid JSON in ${source}: ${err.message}`
-      );
+      throw new InvalidArgumentError(`Invalid JSON in ${source}: ${err.message}`);
     }
     throw err;
   }

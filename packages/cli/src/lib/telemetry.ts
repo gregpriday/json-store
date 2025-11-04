@@ -33,10 +33,7 @@ export function emitMetric(key: string, fields: Record<string, unknown>): void {
 /**
  * Wrap an async function with timing metrics
  */
-export async function withTiming<T>(
-  label: string,
-  fn: () => Promise<T>
-): Promise<T> {
+export async function withTiming<T>(label: string, fn: () => Promise<T>): Promise<T> {
   const start = Date.now();
   let success = false;
 
