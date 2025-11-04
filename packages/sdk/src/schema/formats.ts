@@ -337,6 +337,7 @@ export const markdownPathFormat: FormatValidator = (value: string): boolean => {
   }
 
   // Cannot contain null bytes or control characters
+  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f]/.test(value)) {
     return false;
   }

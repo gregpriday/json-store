@@ -26,7 +26,13 @@ import type {
   SchemaRef,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
-import { validateDocument, validateName, validateKey, validateTypeName, validateWithSchema } from "./validation.js";
+import {
+  validateDocument,
+  validateName,
+  validateKey,
+  validateTypeName,
+  validateWithSchema,
+} from "./validation.js";
 import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
 import { evaluateQuery, matches, project, getPath } from "./query.js";
 import { stableStringify } from "./format.js";
@@ -182,13 +188,22 @@ class JSONStore implements Store {
 
       // Validate if schema reference is present
       if (schemaRef) {
-        const result = validateWithSchema(doc, schemaRef, this.#schemaValidator, this.#options.schemaMode);
+        const result = validateWithSchema(
+          doc,
+          schemaRef,
+          this.#schemaValidator,
+          this.#options.schemaMode
+        );
 
         if (!result.ok) {
           if (this.#options.schemaMode === "strict") {
             // In strict mode, throw error with all validation errors
-            const errorMessages = result.errors.map((e) => `  ${e.pointer}: ${e.message}`).join("\n");
-            throw new Error(`Schema validation failed for ${key.type}/${key.id}:\n${errorMessages}`);
+            const errorMessages = result.errors
+              .map((e) => `  ${e.pointer}: ${e.message}`)
+              .join("\n");
+            throw new Error(
+              `Schema validation failed for ${key.type}/${key.id}:\n${errorMessages}`
+            );
           } else if (this.#options.schemaMode === "lenient") {
             // In lenient mode, log warnings but continue
             console.warn(`Schema validation warnings for ${key.type}/${key.id}:`);

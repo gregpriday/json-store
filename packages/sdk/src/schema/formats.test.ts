@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { slugFormat, iso3166_1_alpha_2Format, iso3166_2Format, markdownPathFormat } from "./formats.js";
+import {
+  slugFormat,
+  iso3166_1_alpha_2Format,
+  iso3166_2Format,
+  markdownPathFormat,
+} from "./formats.js";
 
 describe("slugFormat", () => {
   it("should accept valid slugs", () => {

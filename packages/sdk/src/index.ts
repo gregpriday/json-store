@@ -37,12 +37,25 @@ export { DocumentCache } from "./cache.js";
 // Re-export utilities
 export { stableStringify, normalizeJSON, jsonEqual } from "./format.js";
 export { matches, project, sortDocuments, paginate, getPath } from "./query.js";
-export { validateKey, validateDocument, validateName, sanitizePath, validateWithSchema, validateSchemaRef } from "./validation.js";
+export {
+  validateKey,
+  validateDocument,
+  validateName,
+  sanitizePath,
+  validateWithSchema,
+  validateSchemaRef,
+} from "./validation.js";
 
 // Re-export schema components
 export { createSchemaRegistry } from "./schema/registry.js";
 export { createSchemaValidator } from "./schema/validator.js";
-export { DEFAULT_FORMATS, slugFormat, iso3166_1_alpha_2Format, iso3166_2Format, markdownPathFormat } from "./schema/formats.js";
+export {
+  DEFAULT_FORMATS,
+  slugFormat,
+  iso3166_1_alpha_2Format,
+  iso3166_2Format,
+  markdownPathFormat,
+} from "./schema/formats.js";
 
 // Re-export I/O operations
 export { atomicWrite, readDocument, removeDocument, ensureDirectory, listFiles } from "./io.js";

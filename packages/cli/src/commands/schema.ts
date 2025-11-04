@@ -15,18 +15,16 @@ import { withTiming } from "../lib/telemetry.js";
  * Create schema command group
  */
 export function createSchemaCommand(program: Command): Command {
-  const schema = new Command("schema")
-    .description("Manage JSON Schema validation")
-    .addHelpText(
-      "after",
-      `
+  const schema = new Command("schema").description("Manage JSON Schema validation").addHelpText(
+    "after",
+    `
 Examples:
   $ jsonstore schema add ./schemas/city@1.json
   $ jsonstore schema list
   $ jsonstore schema validate city
   $ jsonstore schema validate city city-123
   $ jsonstore schema validate --all`
-    );
+  );
 
   // schema add command
   schema
@@ -111,14 +109,23 @@ Examples:
               const entries = await readdir(root);
               for (const entry of entries) {
                 const stat = await lstat(join(root, entry));
-                if (stat.isDirectory() && !entry.startsWith("_")) {
+                // Skip hidden directories, meta directories, and symlinks
+                if (
+                  stat.isDirectory() &&
+                  !stat.isSymbolicLink() &&
+                  !entry.startsWith("_") &&
+                  !entry.startsWith(".")
+                ) {
                   types.push(entry);
                 }
               }
             } catch (err) {
-              throw new CliError(`Unable to read document types from ${root}: ${(err as Error).message}`, {
-                exitCode: 1,
-              });
+              throw new CliError(
+                `Unable to read document types from ${root}: ${(err as Error).message}`,
+                {
+                  exitCode: 1,
+                }
+              );
             }
 
             // Collect all documents
@@ -159,7 +166,9 @@ Examples:
             if (!schemaRef) {
               warningCount++;
               if (opts.verbose) {
-                console.log(colorize(`⚠ ${doc.type}/${doc.id}: No schemaRef`, "yellow", process.stdout));
+                console.log(
+                  colorize(`⚠ ${doc.type}/${doc.id}: No schemaRef`, "yellow", process.stdout)
+                );
               }
               continue;
             }
@@ -168,7 +177,9 @@ Examples:
 
             if (!result.ok) {
               errorCount++;
-              console.log(colorize(`✗ ${doc.type}/${doc.id}: Validation failed`, "red", process.stderr));
+              console.log(
+                colorize(`✗ ${doc.type}/${doc.id}: Validation failed`, "red", process.stderr)
+              );
               for (const error of result.errors) {
                 console.log(`  ${error.pointer}: ${error.message}`);
               }
@@ -198,7 +209,9 @@ Examples:
           if (err instanceof CliError) {
             throw err;
           }
-          throw new CliError(`Failed to validate documents: ${(err as Error).message}`, { exitCode: 1 });
+          throw new CliError(`Failed to validate documents: ${(err as Error).message}`, {
+            exitCode: 1,
+          });
         } finally {
           if (storeInstance) {
             await storeInstance.close();

@@ -90,7 +90,7 @@ export class SchemaValidatorImpl implements SchemaValidator {
     }
 
     // Apply mode-specific schema modifications for strict mode
-    let dataToValidate = doc;
+    const dataToValidate = doc;
     const schema = this.#registry.get(schemaRef);
 
     if (mode === "strict" && schema) {

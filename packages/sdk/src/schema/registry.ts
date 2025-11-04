@@ -136,7 +136,9 @@ export class SchemaRegistryImpl implements SchemaRegistry {
 
     // Require $schema field for draft version
     if (!schema.$schema || typeof schema.$schema !== "string") {
-      throw new Error(`Schema file ${filename} must have a $schema field specifying the draft version`);
+      throw new Error(
+        `Schema file ${filename} must have a $schema field specifying the draft version`
+      );
     }
 
     // Enforce Draft 2020-12

@@ -2,7 +2,14 @@
  * Validation utilities for store operations
  */
 
-import type { Key, Document, SchemaRef, SchemaValidator, ValidationMode, ValidationResult } from "./types.js";
+import type {
+  Key,
+  Document,
+  SchemaRef,
+  SchemaValidator,
+  ValidationMode,
+  ValidationResult,
+} from "./types.js";
 
 /**
  * Valid characters for type and ID: alphanumeric, underscore, dash, dot
@@ -181,7 +188,8 @@ export function validateSchemaRef(ref: string): asserts ref is SchemaRef {
   const pattern = /^schema\/[a-zA-Z0-9_-]+@\d+$/;
   if (!pattern.test(ref)) {
     throw new Error(
-      `Invalid SchemaRef format: "${ref}". ` + `Must match pattern: schema/<kind>@<major> (e.g., "schema/city@1")`
+      `Invalid SchemaRef format: "${ref}". ` +
+        `Must match pattern: schema/<kind>@<major> (e.g., "schema/city@1")`
     );
   }
 }

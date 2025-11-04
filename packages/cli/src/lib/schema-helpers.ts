@@ -117,7 +117,8 @@ export function formatSchemaList(registry: SchemaRegistry): string[] {
     lines.push(`  ${ref}`);
     lines.push(`    Title: ${title}`);
     if (description) {
-      const truncated = description.length > 60 ? description.substring(0, 60) + "..." : description;
+      const truncated =
+        description.length > 60 ? description.substring(0, 60) + "..." : description;
       lines.push(`    Description: ${truncated}`);
     }
     lines.push("");
