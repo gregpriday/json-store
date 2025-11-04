@@ -2,4 +2,4 @@
  * Server library exports
  */
 
-export { tools } from "./tools.js";
+export { toolDefinitions, toolHandlers } from "./tools.js";
