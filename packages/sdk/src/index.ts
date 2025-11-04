@@ -31,6 +31,15 @@ export type {
   ListChildrenOptions,
   Page,
   RepairReport,
+  // Schema validation types
+  SchemaRef,
+  ValidationMode,
+  ValidationError,
+  ValidationErrorCode,
+  ValidationResult,
+  SchemaRegistry,
+  SchemaValidator,
+  FormatValidator,
 } from "./types.js";
 
 // Re-export cache types
@@ -48,6 +57,8 @@ export {
   validateSlug,
   validateMaterializedPath,
   validatePathDepth,
+  validateWithSchema,
+  validateSchemaRef,
 } from "./validation.js";
 
 // Re-export hierarchy utilities
@@ -58,6 +69,17 @@ export {
   computePath,
   childrenSortKey,
 } from "./hierarchy/codec.js";
+
+// Re-export schema components
+export { createSchemaRegistry } from "./schema/registry.js";
+export { createSchemaValidator } from "./schema/validator.js";
+export {
+  DEFAULT_FORMATS,
+  slugFormat,
+  iso3166_1_alpha_2Format,
+  iso3166_2Format,
+  markdownPathFormat,
+} from "./schema/formats.js";
 
 // Re-export I/O operations
 export { atomicWrite, readDocument, removeDocument, ensureDirectory, listFiles } from "./io.js";

@@ -27,9 +27,18 @@ import type {
   Page,
   ListChildrenOptions,
   RepairReport,
+  SchemaRegistry,
+  SchemaValidator,
+  SchemaRef,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
-import { validateDocument, validateName, validateKey, validateTypeName } from "./validation.js";
+import {
+  validateDocument,
+  validateName,
+  validateKey,
+  validateTypeName,
+  validateWithSchema,
+} from "./validation.js";
 import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
 import { evaluateQuery, matches, project, getPath } from "./query.js";
 import { stableStringify } from "./format.js";
@@ -38,6 +47,8 @@ import { canonicalize, safeParseJson } from "./format/canonical.js";
 import { DocumentReadError, FormatError, DocumentNotFoundError } from "./errors.js";
 import { HierarchyManager } from "./hierarchy/hierarchy-manager.js";
 import { validateMaterializedPath, validatePathDepth } from "./validation.js";
+import { createSchemaRegistry } from "./schema/registry.js";
+import { createSchemaValidator } from "./schema/validator.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -71,6 +82,9 @@ class JSONStore implements Store {
   #indexManager: IndexManager;
   #hierarchyManager?: HierarchyManager;
   #rootPath: string;
+  #schemaRegistry: SchemaRegistry | null = null;
+  #schemaValidator: SchemaValidator | null = null;
+  #schemaLoadPromise: Promise<void> | null = null;
 
   constructor(options: StoreOptions) {
     // Resolve root to absolute path for consistent cache keys
@@ -99,6 +113,9 @@ class JSONStore implements Store {
       indexes: options.indexes ?? {},
       formatConcurrency,
       enableHierarchy: options.enableHierarchy ?? false,
+      schemaMode: options.schemaMode ?? "off",
+      customFormats: options.customFormats ?? {},
+      defaultSchemas: options.defaultSchemas ?? {},
       experimental: options.experimental ?? {},
     };
 
@@ -131,6 +148,24 @@ class JSONStore implements Store {
     }
 
     this.#rootPath = canonicalRoot;
+
+    // Initialize schema validation if mode is not 'off'
+    if (this.#options.schemaMode !== "off") {
+      this.#schemaRegistry = createSchemaRegistry();
+      this.#schemaValidator = createSchemaValidator(this.#schemaRegistry);
+
+      // Register custom formats if provided
+      if (Object.keys(this.#options.customFormats).length > 0) {
+        this.#schemaValidator.registerFormats(this.#options.customFormats);
+      }
+
+      // Load schemas asynchronously (non-blocking)
+      // Schemas will be available after this promise resolves
+      this.#schemaLoadPromise = this.#schemaRegistry.loadAll(canonicalRoot).catch((err) => {
+        // Log error but don't fail construction
+        console.warn(`Failed to load schemas: ${err.message}`);
+      });
+    }
   }
 
   get options(): Required<StoreOptions> {
@@ -161,6 +196,55 @@ class JSONStore implements Store {
     // Validate key and document
     validateKey(key);
     validateDocument(key, doc);
+
+    // Schema validation (if enabled)
+    if (this.#options.schemaMode !== "off" && this.#schemaValidator && this.#schemaRegistry) {
+      // Wait for schema loading to complete if still in progress
+      if (this.#schemaLoadPromise) {
+        await this.#schemaLoadPromise;
+      }
+
+      // Determine schema reference
+      let schemaRef: SchemaRef | undefined = doc.schemaRef;
+
+      // Fall back to default schema for kind if no schemaRef provided
+      if (!schemaRef && doc.kind && this.#options.defaultSchemas[doc.kind]) {
+        schemaRef = this.#options.defaultSchemas[doc.kind];
+      }
+
+      // Validate if schema reference is present
+      if (schemaRef) {
+        const result = validateWithSchema(
+          doc,
+          schemaRef,
+          this.#schemaValidator,
+          this.#options.schemaMode
+        );
+
+        if (!result.ok) {
+          if (this.#options.schemaMode === "strict") {
+            // In strict mode, throw error with all validation errors
+            const errorMessages = result.errors
+              .map((e) => `  ${e.pointer}: ${e.message}`)
+              .join("\n");
+            throw new Error(
+              `Schema validation failed for ${key.type}/${key.id}:\n${errorMessages}`
+            );
+          } else if (this.#options.schemaMode === "lenient") {
+            // In lenient mode, log warnings but continue
+            console.warn(`Schema validation warnings for ${key.type}/${key.id}:`);
+            result.errors.forEach((e) => {
+              console.warn(`  ${e.pointer}: ${e.message}`);
+            });
+          }
+        }
+      } else if (this.#options.schemaMode === "strict") {
+        // In strict mode with no schema ref, fail fast
+        throw new Error(
+          `Schema validation failed for ${key.type}/${key.id}: no schemaRef and no default schema for kind "${doc.kind || "N/A"}"`
+        );
+      }
+    }
 
     // Get old document for index updates (if indexes enabled)
     let oldDoc: Document | null = null;

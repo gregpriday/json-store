@@ -17,6 +17,7 @@ import { readStdin, readJsonFromFile, isStdinTTY } from "./lib/io.js";
 import { printJson, printLines, colorize } from "./lib/render.js";
 import { CliError, mapSdkErrorToExitCode, formatCliError } from "./lib/errors.js";
 import { withTiming } from "./lib/telemetry.js";
+import { createSchemaCommand } from "./commands/schema.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -449,6 +450,9 @@ program
       if (exitCode !== 0) process.exit(exitCode);
     }
   });
+
+// Add schema command group
+program.addCommand(createSchemaCommand(program));
 
 // Top-level error handler
 async function main() {
