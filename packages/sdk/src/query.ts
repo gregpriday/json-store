@@ -138,15 +138,16 @@ export function project(doc: Document, projection?: Projection): Document {
     return doc;
   }
 
-  const includeFields = Object.entries(projection)
-    .filter(([, v]) => v === 1)
-    .map(([k]) => k);
+  const entries = Object.entries(projection);
+  const includeFields = entries.filter(([, v]) => v === 1).map(([k]) => k);
+  const excludeFields = entries.filter(([, v]) => v === 0).map(([k]) => k);
+
+  if (includeFields.length > 0 && excludeFields.length > 0) {
+    throw new Error("Projection cannot mix inclusion and exclusion");
+  }
 
   if (includeFields.length === 0) {
     // Exclusion mode (not commonly used, but supported)
-    const excludeFields = Object.entries(projection)
-      .filter(([, v]) => v === 0)
-      .map(([k]) => k);
     const result = { ...doc };
     for (const field of excludeFields) {
       delete result[field];
