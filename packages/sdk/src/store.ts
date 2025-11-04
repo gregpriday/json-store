@@ -262,14 +262,22 @@ class JSONStore implements Store {
       // Apply projection if needed
       results = spec.projection ? matches.map((d) => project(d, spec.projection)) : matches;
     } else {
-      // With sort: must materialize all matches
+      // With sort: must materialize all matches, but filter during scan to avoid buffering non-matching docs
       const allDocs: Document[] = [];
       for await (const doc of this.scan(spec)) {
-        allDocs.push(doc);
+        if (this.matchesFilter(doc, spec.filter)) {
+          allDocs.push(doc);
+        }
       }
 
-      // Use evaluateQuery for full filter+sort+paginate+project
-      results = evaluateQuery(allDocs, spec);
+      // Use evaluateQuery for sort+paginate+project (filtering already applied)
+      results = evaluateQuery(allDocs, {
+        filter: {}, // Already filtered during scan
+        sort: spec.sort,
+        skip: spec.skip,
+        limit: spec.limit,
+        projection: spec.projection,
+      });
     }
 
     if (process.env.JSONSTORE_DEBUG) {
