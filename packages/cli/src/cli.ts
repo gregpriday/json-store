@@ -161,7 +161,7 @@ program
     }
 
     let exitCode = 0;
-    let store: Awaited<ReturnType<typeof import("@jsonstore/sdk")["openStore"]>> | undefined;
+    let store: Awaited<ReturnType<(typeof import("@jsonstore/sdk"))["openStore"]>> | undefined;
 
     try {
       const { openStore } = await import("@jsonstore/sdk");

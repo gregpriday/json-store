@@ -248,10 +248,7 @@ describe("Store stats operations", () => {
   describe("stats() - security", () => {
     it("should reject symlinked type directory pointing outside store root", async () => {
       // Create a type directory first
-      await store.put(
-        { type: "legit", id: "doc1" },
-        { type: "legit", id: "doc1", data: "ok" }
-      );
+      await store.put({ type: "legit", id: "doc1" }, { type: "legit", id: "doc1", data: "ok" });
 
       // Create an external directory
       const externalDir = await mkdtemp(join(tmpdir(), "external-"));

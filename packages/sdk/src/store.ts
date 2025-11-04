@@ -532,7 +532,7 @@ class JSONStore implements Store {
 
     try {
       // Use opendir for streaming to avoid memory spikes with large directories
-      const dir = await fs.opendir(typeDir);
+      const dir = await fs.opendir(realTypeDir);
 
       for await (const entry of dir) {
         // Only process .json files
@@ -541,7 +541,7 @@ class JSONStore implements Store {
         }
 
         // Get file stats using lstat to avoid following symlinks
-        const filePath = path.join(typeDir, entry.name);
+        const filePath = path.join(realTypeDir, entry.name);
         try {
           const stats = await fs.lstat(filePath);
 
