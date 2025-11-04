@@ -47,6 +47,12 @@ const WINDOWS_RESERVED_NAMES = new Set([
 ]);
 
 /**
+ * Valid slug pattern: alphanumeric with dashes (supports Unicode)
+ * Allows letters, digits, and dashes (some scripts don't have uppercase/lowercase)
+ */
+const VALID_SLUG_PATTERN = /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u;
+
+/**
  * Validate a type or ID string
  * @param value - Value to validate
  * @param label - Label for error messages ("type" or "id")
@@ -168,7 +174,7 @@ export function validateTypeName(typeName: string): void {
  * Slug validation pattern: lowercase letters, digits, hyphens only
  * Must start with letter or digit, cannot have consecutive hyphens
  */
-const VALID_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+const VALID_SLUG_PATTERN_STRICT = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 /**
  * Zero-width and control characters that should be rejected
@@ -221,7 +227,7 @@ export function validateSlug(slug: string): Slug {
   }
 
   // Check pattern: alphanumeric + hyphens, no consecutive hyphens
-  if (!VALID_SLUG_PATTERN.test(normalized)) {
+  if (!VALID_SLUG_PATTERN_STRICT.test(normalized)) {
     throw new Error(
       `Slug contains invalid characters or format: "${slug}". ` +
         `Only lowercase letters, digits, and single hyphens allowed. ` +
@@ -323,6 +329,36 @@ export function validatePathDepth(path: MaterializedPath, maxDepth: number = 32)
 }
 
 /**
+ * Validate a slug string (simple check without returning branded type)
+ * @param slug - Slug to validate
+ * @param label - Label for error messages (e.g., "slug" or "alias")
+ * @throws Error if slug is invalid
+ */
+export function validateSlugString(slug: string, label: string = "slug"): void {
+  if (!slug || typeof slug !== "string") {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  // Check format: lowercase alphanumeric with dashes
+  if (!VALID_SLUG_PATTERN.test(slug)) {
+    throw new Error(
+      `${label} contains invalid characters: "${slug}". ` +
+        `Slugs must be lowercase alphanumeric with dashes, matching: /^[a-z0-9]+(?:-[a-z0-9]+)*$/`
+    );
+  }
+
+  // Check length (reasonable maximum)
+  if (slug.length > 256) {
+    throw new Error(`${label} is too long: "${slug}". Maximum length is 256 characters.`);
+  }
+
+  // Prevent only dashes or numbers
+  if (/^[0-9-]+$/.test(slug)) {
+    throw new Error(`${label} cannot consist only of numbers and dashes: "${slug}"`);
+  }
+}
+
+/**
  * Validate a document against its schema
  * @param doc - Document to validate
  * @param schemaRef - Schema reference
@@ -351,5 +387,33 @@ export function validateSchemaRef(ref: string): asserts ref is SchemaRef {
       `Invalid SchemaRef format: "${ref}". ` +
         `Must match pattern: schema/<kind>@<major> (e.g., "schema/city@1")`
     );
+  }
+}
+
+/**
+ * Validate slug field on a document (if present)
+ * @param doc - Document to validate
+ * @throws Error if slug is present but invalid
+ */
+export function validateDocumentSlug(doc: Document): void {
+  if (doc.slug !== undefined) {
+    if (typeof doc.slug !== "string") {
+      throw new Error(`Document slug must be a string, got: ${typeof doc.slug}`);
+    }
+    validateSlugString(doc.slug, "Document slug");
+  }
+
+  // Validate aliases if present
+  if (doc.aliases !== undefined) {
+    if (!Array.isArray(doc.aliases)) {
+      throw new Error(`Document aliases must be an array, got: ${typeof doc.aliases}`);
+    }
+
+    for (const alias of doc.aliases) {
+      if (typeof alias !== "string") {
+        throw new Error(`Alias must be a string, got: ${typeof alias}`);
+      }
+      validateSlugString(alias, "Alias");
+    }
   }
 }

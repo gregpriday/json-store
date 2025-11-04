@@ -36,6 +36,17 @@ export interface IndexMetadata {
 export type IndexData = Record<string, string[]>;
 
 /**
+ * Slug index data structure: scope → slug → document ID
+ * For scoped slugs (e.g., city slugs unique per country)
+ */
+export type SlugIndexData = Record<string, Record<string, string>>;
+
+/**
+ * Alias index data structure: scope → alias → document ID
+ */
+export type AliasIndexData = Record<string, Record<string, string>>;
+
+/**
  * Simple in-process mutex for serializing index updates
  */
 class Mutex {
@@ -478,5 +489,377 @@ export class IndexManager {
     }
 
     return docs;
+  }
+
+  // ============================================================================
+  // Slug Index Operations
+  // ============================================================================
+
+  /**
+   * Ensure slug index exists for a type
+   */
+  async ensureSlugIndex(type: string): Promise<void> {
+    validateName(type, "type");
+
+    const startTime = performance.now();
+    logger.info("slug_index.rebuild.start", { type });
+
+    const mutex = this.#getMutex(type, "_slug");
+    await mutex.withLock(async () => {
+      // Initialize empty slug index
+      const index: SlugIndexData = {};
+
+      // Write to disk
+      await this.#writeSlugIndex(type, index);
+
+      const duration = performance.now() - startTime;
+      logger.info("slug_index.rebuild.end", {
+        type,
+        details: { durationMs: duration.toFixed(2) },
+      });
+    });
+  }
+
+  /**
+   * Claim a slug in a specific scope
+   * Returns { ok: true } if claimed successfully
+   * Returns { ok: false, holderId } if slug is already taken
+   */
+  async claimSlug(
+    type: string,
+    scopeKey: string,
+    slug: string,
+    docId: string
+  ): Promise<{ ok: boolean; holderId?: string }> {
+    validateName(type, "type");
+
+    const startTime = performance.now();
+
+    const mutex = this.#getMutex(type, "_slug");
+    const result = await mutex.withLock(async () => {
+      // Read existing index (or empty if doesn't exist yet)
+      let index: SlugIndexData;
+      try {
+        index = await this.#readSlugIndex(type);
+      } catch (err: any) {
+        // If index doesn't exist, create empty one
+        if (err.code === "ENOENT") {
+          index = {};
+        } else {
+          throw err;
+        }
+      }
+
+      // Ensure scope exists
+      if (!index[scopeKey]) {
+        index[scopeKey] = {};
+      }
+
+      // Check if slug is already taken
+      const existingHolder = index[scopeKey][slug];
+      if (existingHolder && existingHolder !== docId) {
+        return { ok: false, holderId: existingHolder };
+      }
+
+      // Claim the slug
+      index[scopeKey][slug] = docId;
+
+      // Write updated index
+      await this.#writeSlugIndex(type, index);
+
+      logger.debug("slug_index.claim", {
+        type,
+        details: {
+          scopeKey,
+          slug,
+          docId,
+          durationMs: (performance.now() - startTime).toFixed(2),
+        },
+      });
+
+      return { ok: true };
+    });
+
+    return result;
+  }
+
+  /**
+   * Release a slug from a specific scope
+   */
+  async releaseSlug(type: string, scopeKey: string, slug: string, docId: string): Promise<void> {
+    validateName(type, "type");
+
+    const startTime = performance.now();
+
+    const mutex = this.#getMutex(type, "_slug");
+    await mutex.withLock(async () => {
+      // Read existing index
+      let index: SlugIndexData;
+      try {
+        index = await this.#readSlugIndex(type);
+      } catch (err: any) {
+        // If index doesn't exist, nothing to release
+        if (err.code === "ENOENT") {
+          return;
+        }
+        throw err;
+      }
+
+      // Remove slug if it's held by this document
+      if (index[scopeKey] && index[scopeKey][slug] === docId) {
+        delete index[scopeKey][slug];
+
+        // Clean up empty scopes
+        if (Object.keys(index[scopeKey]).length === 0) {
+          delete index[scopeKey];
+        }
+
+        // Write updated index
+        await this.#writeSlugIndex(type, index);
+
+        logger.debug("slug_index.release", {
+          type,
+          details: {
+            scopeKey,
+            slug,
+            docId,
+            durationMs: (performance.now() - startTime).toFixed(2),
+          },
+        });
+      }
+    });
+  }
+
+  /**
+   * Find which document holds a slug in a scope
+   */
+  async findSlugHolder(type: string, scopeKey: string, slug: string): Promise<string | undefined> {
+    validateName(type, "type");
+
+    const mutex = this.#getMutex(type, "_slug");
+    return await mutex.withLock(async () => {
+      try {
+        const index = await this.#readSlugIndex(type);
+        return index[scopeKey]?.[slug];
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          return undefined;
+        }
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Get all slugs in a scope
+   */
+  async getSlugsInScope(type: string, scopeKey: string): Promise<Set<string>> {
+    validateName(type, "type");
+
+    const mutex = this.#getMutex(type, "_slug");
+    return await mutex.withLock(async () => {
+      try {
+        const index = await this.#readSlugIndex(type);
+        const slugs = index[scopeKey] ? Object.keys(index[scopeKey]) : [];
+        return new Set(slugs);
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          return new Set();
+        }
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Update slug aliases for a document
+   */
+  async updateSlugAliases(
+    type: string,
+    scopeKey: string,
+    add: string[],
+    remove: string[],
+    docId: string
+  ): Promise<void> {
+    validateName(type, "type");
+
+    const startTime = performance.now();
+
+    const slugMutex = this.#getMutex(type, "_slug");
+    const aliasMutex = this.#getMutex(type, "_alias");
+
+    await slugMutex.withLock(async () => {
+      // Read canonical slug index while holding the slug lock so the view stays stable
+      let slugIndex: SlugIndexData;
+      try {
+        slugIndex = await this.#readSlugIndex(type);
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          slugIndex = {};
+        } else {
+          throw err;
+        }
+      }
+
+      await aliasMutex.withLock(async () => {
+        // Read existing alias index
+        let index: AliasIndexData;
+        try {
+          index = await this.#readAliasIndex(type);
+        } catch (err: any) {
+          // If index doesn't exist, create empty one
+          if (err.code === "ENOENT") {
+            index = {};
+          } else {
+            throw err;
+          }
+        }
+
+        // Ensure scope exists
+        if (!index[scopeKey]) {
+          index[scopeKey] = {};
+        }
+
+        // Remove aliases
+        for (const alias of remove) {
+          if (index[scopeKey][alias] === docId) {
+            delete index[scopeKey][alias];
+          }
+        }
+
+        // Add aliases
+        for (const alias of add) {
+          // Check if alias conflicts with existing canonical slug
+          const slugHolder = slugIndex[scopeKey]?.[alias];
+          if (slugHolder && slugHolder !== docId) {
+            throw new Error(
+              `Cannot create alias "${alias}": conflicts with canonical slug owned by ${slugHolder}`
+            );
+          }
+
+          // Check if alias is already taken by another document
+          const existingHolder = index[scopeKey][alias];
+          if (existingHolder && existingHolder !== docId) {
+            throw new Error(
+              `Cannot create alias "${alias}": already taken by document ${existingHolder}`
+            );
+          }
+
+          index[scopeKey][alias] = docId;
+        }
+
+        // Clean up empty scopes
+        if (Object.keys(index[scopeKey]).length === 0) {
+          delete index[scopeKey];
+        }
+
+        // Write updated index
+        await this.#writeAliasIndex(type, index);
+
+        logger.debug("alias_index.update", {
+          type,
+          details: {
+            scopeKey,
+            add,
+            remove,
+            docId,
+            durationMs: (performance.now() - startTime).toFixed(2),
+          },
+        });
+      });
+    });
+  }
+
+  /**
+   * Resolve a slug or alias to a document ID
+   */
+  async resolveSlugOrAlias(
+    type: string,
+    scopeKey: string,
+    slugOrAlias: string
+  ): Promise<string | undefined> {
+    validateName(type, "type");
+
+    // First check canonical slugs
+    const slugHolder = await this.findSlugHolder(type, scopeKey, slugOrAlias);
+    if (slugHolder) {
+      return slugHolder;
+    }
+
+    // Then check aliases
+    const mutex = this.#getMutex(type, "_alias");
+    return await mutex.withLock(async () => {
+      try {
+        const index = await this.#readAliasIndex(type);
+        return index[scopeKey]?.[slugOrAlias];
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          return undefined;
+        }
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Read slug index from disk
+   */
+  async #readSlugIndex(type: string): Promise<SlugIndexData> {
+    const indexPath = this.#getSlugIndexPath(type);
+    const content = await readDocument(indexPath);
+    return JSON.parse(content);
+  }
+
+  /**
+   * Write slug index to disk
+   */
+  async #writeSlugIndex(type: string, index: SlugIndexData): Promise<void> {
+    const indexPath = this.#getSlugIndexPath(type);
+
+    // Ensure parent directory exists
+    const indexDir = path.dirname(indexPath);
+    await fs.mkdir(indexDir, { recursive: true });
+
+    // Write with canonical formatting
+    const content = stableStringify(index, this.#indent, this.#stableKeyOrder);
+    await atomicWrite(indexPath, content);
+  }
+
+  /**
+   * Get slug index file path
+   */
+  #getSlugIndexPath(type: string): string {
+    return path.join(this.#root, type, "_indexes", "_slug.json");
+  }
+
+  /**
+   * Read alias index from disk
+   */
+  async #readAliasIndex(type: string): Promise<AliasIndexData> {
+    const indexPath = this.#getAliasIndexPath(type);
+    const content = await readDocument(indexPath);
+    return JSON.parse(content);
+  }
+
+  /**
+   * Write alias index to disk
+   */
+  async #writeAliasIndex(type: string, index: AliasIndexData): Promise<void> {
+    const indexPath = this.#getAliasIndexPath(type);
+
+    // Ensure parent directory exists
+    const indexDir = path.dirname(indexPath);
+    await fs.mkdir(indexDir, { recursive: true });
+
+    // Write with canonical formatting
+    const content = stableStringify(index, this.#indent, this.#stableKeyOrder);
+    await atomicWrite(indexPath, content);
+  }
+
+  /**
+   * Get alias index file path
+   */
+  #getAliasIndexPath(type: string): string {
+    return path.join(this.#root, type, "_indexes", "_alias.json");
   }
 }

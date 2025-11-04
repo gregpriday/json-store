@@ -49,6 +49,8 @@ import { HierarchyManager } from "./hierarchy/hierarchy-manager.js";
 import { validateMaterializedPath, validatePathDepth } from "./validation.js";
 import { createSchemaRegistry } from "./schema/registry.js";
 import { createSchemaValidator } from "./schema/validator.js";
+import { generateSlug, generateUniqueSlug } from "./slug.js";
+import type { SlugOptions } from "./types.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -117,6 +119,7 @@ class JSONStore implements Store {
       customFormats: options.customFormats ?? {},
       defaultSchemas: options.defaultSchemas ?? {},
       experimental: options.experimental ?? {},
+      slugConfig: options.slugConfig ?? {},
     };
 
     // Initialize cache with default settings
@@ -246,18 +249,61 @@ class JSONStore implements Store {
       }
     }
 
-    // Get old document for index updates (if indexes enabled)
+    // Get old document for index updates and slug processing
     let oldDoc: Document | null = null;
-    if (this.#options.enableIndexes) {
+    const needsOldDoc = this.#options.enableIndexes || this.#getSlugConfig(key.type);
+    if (needsOldDoc) {
       try {
         oldDoc = await this.get(key);
-      } catch {
+      } catch (err: any) {
         // Document doesn't exist yet - that's fine
+        // But rethrow read/parse errors to avoid creating duplicate slugs
+        if (err.code !== "ENOENT" && !(err instanceof DocumentNotFoundError)) {
+          throw err;
+        }
+      }
+    }
+
+    // Process slug (if configured for this type)
+    let processedDoc = doc;
+    let slugScopeKey = "";
+    let oldSlugScopeKey = "";
+    let oldSlug: string | undefined;
+
+    const slugConfig = this.#getSlugConfig(key.type);
+    if (slugConfig) {
+      const result = await this.#processSlug(key, doc, oldDoc);
+      processedDoc = result.doc;
+      slugScopeKey = result.scopeKey;
+      oldSlugScopeKey = result.oldScopeKey ?? result.scopeKey;
+      oldSlug = result.oldSlug;
+
+      // Claim the new slug (if it changed or scope changed)
+      const slugChanged = processedDoc.slug && processedDoc.slug !== oldSlug;
+      const scopeChanged = slugScopeKey !== oldSlugScopeKey;
+
+      if (processedDoc.slug && (slugChanged || scopeChanged)) {
+        const claimResult = await this.#indexManager.claimSlug(
+          key.type,
+          slugScopeKey,
+          processedDoc.slug,
+          key.id
+        );
+
+        if (!claimResult.ok) {
+          throw new Error(
+            `Slug "${processedDoc.slug}" is already taken by document ${claimResult.holderId}`
+          );
+        }
       }
     }
 
     // Canonicalize document with stable formatting
-    const content = stableStringify(doc, this.#options.indent, this.#options.stableKeyOrder);
+    const content = stableStringify(
+      processedDoc,
+      this.#options.indent,
+      this.#options.stableKeyOrder
+    );
 
     // Get file path
     const filePath = this.getFilePath(key);
@@ -277,7 +323,40 @@ class JSONStore implements Store {
 
     // Perform atomic write if content changed
     if (!unchanged) {
-      await atomicWrite(filePath, content);
+      try {
+        await atomicWrite(filePath, content);
+      } catch (err: any) {
+        // Compensating action: release slug claim if write failed
+        const slugChanged = processedDoc.slug && processedDoc.slug !== oldSlug;
+        const scopeChanged = slugScopeKey !== oldSlugScopeKey;
+        if (slugConfig && processedDoc.slug && (slugChanged || scopeChanged)) {
+          await this.#indexManager.releaseSlug(key.type, slugScopeKey, processedDoc.slug, key.id);
+        }
+        throw err;
+      }
+    }
+
+    // Release old slug after successful write (use old scope if document moved)
+    // Release if: slug text changed OR (slug text same but scope changed)
+    const shouldReleaseOldSlug =
+      slugConfig &&
+      oldSlug &&
+      !unchanged &&
+      (oldSlug !== processedDoc.slug || slugScopeKey !== oldSlugScopeKey);
+
+    if (shouldReleaseOldSlug) {
+      // TypeScript: oldSlug is guaranteed to be string due to shouldReleaseOldSlug guard
+      const releaseScope = oldSlugScopeKey || slugScopeKey;
+      await this.#indexManager.releaseSlug(key.type, releaseScope, oldSlug!, key.id);
+
+      // Handle alias creation for published slug changes (only if slug text changed)
+      if (slugConfig.allowPublishedRename !== false && oldSlug !== processedDoc.slug) {
+        // Add old slug as alias
+        const currentAliases = (processedDoc.aliases as string[]) ?? [];
+        if (!currentAliases.includes(oldSlug!)) {
+          await this.#indexManager.updateSlugAliases(key.type, slugScopeKey, [oldSlug!], [], key.id);
+        }
+      }
     }
 
     // Avoid serving stale data after concurrent writers; next read will repopulate safely.
@@ -288,7 +367,7 @@ class JSONStore implements Store {
       const fields = this.#getIndexedFields(key.type);
       for (const field of fields) {
         const oldValue = oldDoc ? getPath(oldDoc, field) : undefined;
-        const newValue = getPath(doc, field);
+        const newValue = getPath(processedDoc, field);
         await this.#indexManager.updateIndex(key.type, field, key.id, oldValue, newValue);
       }
     }
@@ -868,6 +947,81 @@ class JSONStore implements Store {
     return this.#options.indexes?.[type] ?? [];
   }
 
+  /**
+   * Get slug configuration for a type
+   */
+  #getSlugConfig(type: string): SlugOptions | undefined {
+    return this.#options.slugConfig?.[type];
+  }
+
+  /**
+   * Extract source field value(s) for slug generation
+   */
+  #extractSlugSource(doc: Document, source: string | string[]): string {
+    if (typeof source === "string") {
+      const value = getPath(doc, source);
+      return String(value ?? "");
+    }
+
+    // Array of fields: concatenate with space
+    const values = source.map((field) => {
+      const value = getPath(doc, field);
+      return String(value ?? "");
+    });
+    return values.filter((v) => v).join(" ");
+  }
+
+  /**
+   * Process slug for a document
+   * Generates slug from source fields and ensures uniqueness in scope
+   * Returns the document with slug field set, and old slug if changed
+   */
+  async #processSlug(
+    key: Key,
+    doc: Document,
+    oldDoc: Document | null
+  ): Promise<{ doc: Document; oldSlug?: string; scopeKey: string; oldScopeKey?: string }> {
+    const config = this.#getSlugConfig(key.type);
+    if (!config) {
+      return { doc, scopeKey: "", oldScopeKey: "" };
+    }
+
+    // Extract source text for slug generation
+    const sourceText = this.#extractSlugSource(doc, config.source);
+
+    // Generate base slug
+    const baseSlug = generateSlug(sourceText, {
+      maxLength: config.maxLength,
+      reservedWords: config.reservedWords,
+      transliterate: config.transliterate,
+      locale: config.locale,
+    });
+
+    // Determine scope key (and old scope if document existed)
+    const scopeKey = config.scope ? config.scope(doc) : "global";
+    const oldScopeKey = oldDoc && config.scope ? config.scope(oldDoc) : scopeKey;
+
+    // Check if document already has the same slug
+    const oldSlug = oldDoc?.slug as string | undefined;
+    if (oldSlug === baseSlug) {
+      // No change needed
+      return { doc: { ...doc, slug: baseSlug }, oldSlug, scopeKey, oldScopeKey };
+    }
+
+    // Get all existing slugs in this scope
+    const existingSlugs = await this.#indexManager.getSlugsInScope(key.type, scopeKey);
+
+    // Generate unique slug (will use baseSlug if available, or add suffix)
+    const uniqueSlug = generateUniqueSlug(baseSlug, existingSlugs, config.maxLength ?? 64);
+
+    return {
+      doc: { ...doc, slug: uniqueSlug },
+      oldSlug,
+      scopeKey,
+      oldScopeKey,
+    };
+  }
+
   async ensureIndex(type: string, field: string): Promise<void> {
     validateName(type, "type");
     validateName(field, "id"); // Reuse validation pattern
@@ -885,6 +1039,52 @@ class JSONStore implements Store {
   async rebuildIndexes(type: string, fields?: string[]): Promise<void> {
     validateName(type, "type");
     await this.#indexManager.rebuildIndexes(type, fields);
+  }
+
+  /**
+   * Get a document by slug
+   *
+   * @param type - Entity type
+   * @param scopeKey - Scope key (e.g., country code for city slugs)
+   * @param slug - Slug to look up
+   * @returns Document if found, null otherwise
+   */
+  async getBySlug(type: string, scopeKey: string, slug: string): Promise<Document | null> {
+    validateName(type, "type");
+
+    // Find document ID by slug
+    const docId = await this.#indexManager.findSlugHolder(type, scopeKey, slug);
+    if (!docId) {
+      return null;
+    }
+
+    // Get document by ID
+    return this.get({ type, id: docId });
+  }
+
+  /**
+   * Resolve a slug or alias to a document
+   *
+   * @param type - Entity type
+   * @param scopeKey - Scope key
+   * @param slugOrAlias - Slug or alias to resolve
+   * @returns Document if found, null otherwise
+   */
+  async resolveSlugOrAlias(
+    type: string,
+    scopeKey: string,
+    slugOrAlias: string
+  ): Promise<Document | null> {
+    validateName(type, "type");
+
+    // Resolve slug or alias to document ID
+    const docId = await this.#indexManager.resolveSlugOrAlias(type, scopeKey, slugOrAlias);
+    if (!docId) {
+      return null;
+    }
+
+    // Get document by ID
+    return this.get({ type, id: docId });
   }
 
   async format(target?: FormatTarget, options?: FormatOptions): Promise<number> {

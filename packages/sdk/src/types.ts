@@ -126,6 +126,35 @@ export interface SchemaValidator {
 export type FormatValidator = (value: string) => boolean;
 
 /**
+ * Options for slug generation per type
+ */
+export interface SlugOptions {
+  /** Source field(s) to generate slug from (e.g., "name" or ["firstName", "lastName"]) */
+  source: string | string[];
+  /** Maximum length for the slug (default: 64) */
+  maxLength?: number;
+  /** Reserved words that cannot be used as slugs */
+  reservedWords?: string[];
+  /** Transliteration strategy: 'ascii' (default), 'none', or custom function */
+  transliterate?: "ascii" | "none" | ((s: string) => string);
+  /** Scope function to determine uniqueness scope (e.g., doc => doc.country) */
+  scope?: (doc: any) => string;
+  /** Collision strategy: 'counter' (default) or 'hash' */
+  collisionStrategy?: "counter" | "hash";
+  /** Whether slug is immutable after document is published (default: false) */
+  immutableOnPublish?: boolean;
+  /** Whether to allow renaming published slugs with alias creation (default: true) */
+  allowPublishedRename?: boolean;
+  /** Locale for case conversion (default: 'en') */
+  locale?: string;
+}
+
+/**
+ * Slug configuration per type
+ */
+export type SlugConfig = Record<string, SlugOptions>;
+
+/**
  * Configuration options for opening a store
  */
 export interface StoreOptions {
@@ -151,6 +180,8 @@ export interface StoreOptions {
   customFormats?: Record<string, FormatValidator>;
   /** Default schema mappings by kind: { kind: SchemaRef } */
   defaultSchemas?: Record<string, SchemaRef>;
+  /** Slug configuration per type */
+  slugConfig?: SlugConfig;
   /** Experimental options */
   experimental?: {
     /** Index version for backward compatibility tracking (default: 1) */
@@ -182,6 +213,10 @@ export type Document = Record<string, unknown> & {
   kind?: string;
   /** Optional schema reference for validation */
   schemaRef?: SchemaRef;
+  /** Optional slug for human-readable URLs */
+  slug?: string;
+  /** Optional aliases for redirects (when slug changes) */
+  aliases?: string[];
 };
 
 /**
@@ -467,6 +502,24 @@ export interface Store {
    * @param fields - Optional array of fields to rebuild (default: all)
    */
   rebuildIndexes(type: string, fields?: string[]): Promise<void>;
+
+  /**
+   * Get a document by slug
+   * @param type - Entity type
+   * @param scopeKey - Scope key (e.g., country code for scoped slugs)
+   * @param slug - Slug to look up
+   * @returns Document if found, null otherwise
+   */
+  getBySlug(type: string, scopeKey: string, slug: string): Promise<Document | null>;
+
+  /**
+   * Resolve a slug or alias to a document
+   * @param type - Entity type
+   * @param scopeKey - Scope key
+   * @param slugOrAlias - Slug or alias to resolve
+   * @returns Document if found, null otherwise
+   */
+  resolveSlugOrAlias(type: string, scopeKey: string, slugOrAlias: string): Promise<Document | null>;
 
   /**
    * Format documents to ensure canonical representation
