@@ -11,6 +11,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 ### Phase 1: Foundation (Parallel Work Possible)
 
 **Issue #1: Atomic File I/O Operations**
+
 - Implement write-rename-sync pattern for crash-safe writes
 - File read/write/remove operations
 - Directory management
@@ -18,6 +19,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 - **Can start immediately** ✅
 
 **Issue #2: In-Memory Document Cache**
+
 - LRU cache with metadata-based invalidation
 - mtime/size tracking for cache validity
 - Performance optimization layer
@@ -26,6 +28,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 ### Phase 2: Core Store Operations (Sequential)
 
 **Issue #3: Complete Store CRUD Operations**
+
 - Implement put/get/remove/list in Store class
 - Integrate atomic I/O layer
 - Integrate caching
@@ -33,6 +36,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 - **Depends on**: #1, #2
 
 **Issue #4: Query Execution Engine**
+
 - Full Mango operator support
 - Filter evaluation
 - Sort and projection
@@ -42,18 +46,21 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 ### Phase 3: User Interfaces (Parallel After Phase 2)
 
 **Issue #5: CLI Commands**
+
 - Implement all commands with Commander.js
 - Input/output handling (file, stdin, data)
 - Error handling and exit codes
 - **Depends on**: #3, #4
 
 **Issue #6: MCP Server**
+
 - Implement stdio transport
 - Register all 6 tools with Zod schemas
 - Tool handlers for get/put/rm/list/query/ensure_index
 - **Depends on**: #3, #4
 
 **Issue #7: Equality Indexes**
+
 - Sidecar JSON index files
 - Index maintenance on write
 - Query optimization with indexes
@@ -61,12 +68,14 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 - **Depends on**: #4
 
 **Issue #8: Format Operation**
+
 - Canonical formatting for all documents
 - Byte-stable comparison
 - Git pre-commit hook template
 - **Depends on**: #3
 
 **Issue #9: Stats Operation**
+
 - Document counting
 - Size calculation
 - Per-type and global stats
@@ -75,6 +84,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 ### Phase 4: Quality & Release (Final)
 
 **Issue #10: End-to-End Integration Tests**
+
 - Full workflow tests
 - Performance benchmarks
 - CLI integration tests
@@ -82,6 +92,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 - **Depends on**: All previous issues
 
 **Issue #11: Documentation & Examples**
+
 - API reference
 - Query language guide
 - MCP tool catalog
@@ -90,6 +101,7 @@ Build a fully functional, production-ready JSON Store that can be integrated int
 - **Depends on**: All implementation issues
 
 **Issue #12: Project Completion Checklist** (Meta-issue)
+
 - Tracks overall progress
 - Release checklist
 - Acceptance criteria
@@ -133,37 +145,43 @@ Phase 4 (Final):
 To maximize velocity, different contributors/agents can work on:
 
 ### Team A (Core Storage)
+
 - Issue #1 (I/O)
 - Issue #2 (Cache)
 - Issue #3 (CRUD) - after #1, #2
 
 ### Team B (Query & Performance)
+
 - Issue #4 (Query) - after #3
 - Issue #7 (Indexes) - after #4
 
 ### Team C (Interfaces)
+
 - Issue #5 (CLI) - after #3, #4
 - Issue #6 (MCP) - after #3, #4
 
 ### Team D (Operations)
+
 - Issue #8 (Format) - after #3
 - Issue #9 (Stats) - after #3
 
 ### Team E (Quality)
+
 - Issue #10 (Tests) - after all
 - Issue #11 (Docs) - after all
 
 ## 📊 Progress Tracking
 
-| Phase | Issues | Status |
-|-------|--------|--------|
-| Phase 1 | #1, #2 | 🔴 Not Started |
-| Phase 2 | #3, #4 | 🔴 Not Started |
+| Phase   | Issues             | Status         |
+| ------- | ------------------ | -------------- |
+| Phase 1 | #1, #2             | 🔴 Not Started |
+| Phase 2 | #3, #4             | 🔴 Not Started |
 | Phase 3 | #5, #6, #7, #8, #9 | 🔴 Not Started |
-| Phase 4 | #10, #11 | 🔴 Not Started |
-| Release | #12 | 🔴 Not Started |
+| Phase 4 | #10, #11           | 🔴 Not Started |
+| Release | #12                | 🔴 Not Started |
 
 **Legend:**
+
 - 🔴 Not Started
 - 🟡 In Progress
 - 🟢 Complete
@@ -171,6 +189,7 @@ To maximize velocity, different contributors/agents can work on:
 ## ⏱️ Timeline Estimate
 
 ### With Parallel Work (3-5 contributors)
+
 - **Phase 1**: 2-3 days
 - **Phase 2**: 3-4 days
 - **Phase 3**: 4-5 days
@@ -178,6 +197,7 @@ To maximize velocity, different contributors/agents can work on:
 - **Total**: ~2 weeks
 
 ### Sequential (Single Developer)
+
 - **Total**: 3-4 weeks
 
 ## ✅ Acceptance Criteria
@@ -185,6 +205,7 @@ To maximize velocity, different contributors/agents can work on:
 Before releasing v0.1.0, ALL of the following must be true:
 
 ### Functionality ✅
+
 - [ ] All CRUD operations work
 - [ ] All Mango query operators work
 - [ ] CLI has all commands functional
@@ -194,7 +215,8 @@ Before releasing v0.1.0, ALL of the following must be true:
 - [ ] Stats are accurate
 
 ### Quality ✅
-- [ ] >90% test coverage on SDK
+
+- [ ] > 90% test coverage on SDK
 - [ ] All integration tests pass
 - [ ] E2E workflows validated
 - [ ] Performance targets met:
@@ -203,6 +225,7 @@ Before releasing v0.1.0, ALL of the following must be true:
   - Indexed query: <10ms
 
 ### Documentation ✅
+
 - [ ] README complete
 - [ ] API reference complete
 - [ ] Query guide complete
@@ -230,6 +253,7 @@ After completing all issues:
 ## 🤝 Contributing
 
 Each issue contains:
+
 - **Overview**: What needs to be done
 - **Implementation Tasks**: Detailed checklist
 - **Code Examples**: Reference implementations
@@ -238,6 +262,7 @@ Each issue contains:
 - **Dependencies**: Which issues must be complete first
 
 Pick any issue that:
+
 1. Has all its dependencies complete
 2. Isn't already assigned
 3. Matches your skills/interests

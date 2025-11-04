@@ -251,10 +251,7 @@ export class DocumentCache {
 
     // Evict by memory (best-effort)
     if (this.maxMemoryBytes !== undefined) {
-      while (
-        this.cache.size > 0 &&
-        this.runningBytes > this.maxMemoryBytes
-      ) {
+      while (this.cache.size > 0 && this.runningBytes > this.maxMemoryBytes) {
         const firstKey = this.cache.keys().next().value;
         if (!firstKey) break;
 
@@ -323,5 +320,4 @@ export class DocumentCache {
     }
     return normalized;
   }
-
 }

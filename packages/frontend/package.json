@@ -10,7 +10,12 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["json", "database", "viewer", "frontend"],
+  "keywords": [
+    "json",
+    "database",
+    "viewer",
+    "frontend"
+  ],
   "license": "MIT",
   "dependencies": {
     "react": "^18.2.0",

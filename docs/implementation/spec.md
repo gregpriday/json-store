@@ -86,26 +86,26 @@ Each file contains a single JSON object with:
 
 **Field-level operators:**
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `$eq` | Equals | `{ "status": { "$eq": "open" } }` |
-| `$ne` | Not equals | `{ "status": { "$ne": "closed" } }` |
-| `$in` | In array | `{ "status": { "$in": ["open", "ready"] } }` |
-| `$nin` | Not in array | `{ "status": { "$nin": ["closed", "archived"] } }` |
-| `$gt` | Greater than | `{ "priority": { "$gt": 5 } }` |
-| `$gte` | Greater than or equal | `{ "priority": { "$gte": 5 } }` |
-| `$lt` | Less than | `{ "priority": { "$lt": 10 } }` |
-| `$lte` | Less than or equal | `{ "priority": { "$lte": 10 } }` |
-| `$exists` | Field exists | `{ "assignee": { "$exists": true } }` |
-| `$type` | Type check | `{ "tags": { "$type": "array" } }` |
+| Operator  | Description           | Example                                            |
+| --------- | --------------------- | -------------------------------------------------- |
+| `$eq`     | Equals                | `{ "status": { "$eq": "open" } }`                  |
+| `$ne`     | Not equals            | `{ "status": { "$ne": "closed" } }`                |
+| `$in`     | In array              | `{ "status": { "$in": ["open", "ready"] } }`       |
+| `$nin`    | Not in array          | `{ "status": { "$nin": ["closed", "archived"] } }` |
+| `$gt`     | Greater than          | `{ "priority": { "$gt": 5 } }`                     |
+| `$gte`    | Greater than or equal | `{ "priority": { "$gte": 5 } }`                    |
+| `$lt`     | Less than             | `{ "priority": { "$lt": 10 } }`                    |
+| `$lte`    | Less than or equal    | `{ "priority": { "$lte": 10 } }`                   |
+| `$exists` | Field exists          | `{ "assignee": { "$exists": true } }`              |
+| `$type`   | Type check            | `{ "tags": { "$type": "array" } }`                 |
 
 **Logical operators:**
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `$and` | All conditions must match | `{ "$and": [{ "status": "open" }, { "priority": { "$gte": 5 } }] }` |
-| `$or` | Any condition must match | `{ "$or": [{ "status": "open" }, { "status": "ready" }] }` |
-| `$not` | Negation | `{ "$not": { "status": { "$eq": "closed" } } }` |
+| Operator | Description               | Example                                                             |
+| -------- | ------------------------- | ------------------------------------------------------------------- |
+| `$and`   | All conditions must match | `{ "$and": [{ "status": "open" }, { "priority": { "$gte": 5 } }] }` |
+| `$or`    | Any condition must match  | `{ "$or": [{ "status": "open" }, { "status": "ready" }] }`          |
+| `$not`   | Negation                  | `{ "$not": { "status": { "$eq": "closed" } } }`                     |
 
 ### Paths, Projection & Sort
 
@@ -304,11 +304,7 @@ export interface Store {
   /**
    * Store or update a document
    */
-  put(
-    key: Key,
-    doc: Document,
-    opts?: { gitCommit?: string }
-  ): Promise<void>;
+  put(key: Key, doc: Document, opts?: { gitCommit?: string }): Promise<void>;
 
   /**
    * Retrieve a document by key
@@ -318,10 +314,7 @@ export interface Store {
   /**
    * Remove a document
    */
-  remove(
-    key: Key,
-    opts?: { gitCommit?: string }
-  ): Promise<void>;
+  remove(key: Key, opts?: { gitCommit?: string }): Promise<void>;
 
   /**
    * List all document IDs for a type
@@ -341,16 +334,12 @@ export interface Store {
   /**
    * Format documents to canonical representation
    */
-  format(
-    target?: { all?: true } | { type: string; id?: string }
-  ): Promise<void>;
+  format(target?: { all?: true } | { type: string; id?: string }): Promise<void>;
 
   /**
    * Get statistics for the store or a type
    */
-  stats(
-    type?: string
-  ): Promise<{ count: number; bytes: number }>;
+  stats(type?: string): Promise<{ count: number; bytes: number }>;
 
   /**
    * Close the store and clean up resources
@@ -456,12 +445,12 @@ jsonstore stats [--type <type>]
 
 **Exit Codes:**
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Validation error |
-| 2 | Not found |
-| 3 | I/O error |
+| Code | Meaning          |
+| ---- | ---------------- |
+| 0    | Success          |
+| 1    | Validation error |
+| 2    | Not found        |
+| 3    | I/O error        |
 
 ### Example Usage
 
@@ -771,6 +760,7 @@ await git_commit({ message: "feat(data): batch session-42 (3 docs)" });
 **Hooks:**
 
 - Provide `.husky/pre-commit` hook template:
+
   ```bash
   #!/bin/sh
   jsonstore format --all
@@ -880,10 +870,19 @@ git commit -am "chore(data): normalize formatting post-merge"
 
 ```typescript
 const VALID_OPERATORS = [
-  "$eq", "$ne", "$in", "$nin",
-  "$gt", "$gte", "$lt", "$lte",
-  "$exists", "$type",
-  "$and", "$or", "$not"
+  "$eq",
+  "$ne",
+  "$in",
+  "$nin",
+  "$gt",
+  "$gte",
+  "$lt",
+  "$lte",
+  "$exists",
+  "$type",
+  "$and",
+  "$or",
+  "$not",
 ];
 
 function validateOperator(op: string) {
@@ -959,8 +958,8 @@ const store = openStore({
   hooks: {
     onQuery: (spec, duration, count) => {
       console.log(`Query: ${duration}ms, ${count} results`);
-    }
-  }
+    },
+  },
 });
 ```
 
@@ -1029,12 +1028,12 @@ jsonstore query --type task --data '{...}' --verbose
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATA_ROOT` | Root directory for store | `./data` |
-| `JSONSTORE_INDENT` | Indentation spaces | `2` |
-| `JSONSTORE_AUTO_INDEX` | Auto-maintain indexes | `false` |
-| `JSONSTORE_CACHE_SIZE` | Max cache entries | `10000` |
+| Variable               | Description              | Default  |
+| ---------------------- | ------------------------ | -------- |
+| `DATA_ROOT`            | Root directory for store | `./data` |
+| `JSONSTORE_INDENT`     | Indentation spaces       | `2`      |
+| `JSONSTORE_AUTO_INDEX` | Auto-maintain indexes    | `false`  |
+| `JSONSTORE_CACHE_SIZE` | Max cache entries        | `10000`  |
 
 ### Per-Type Configuration
 
@@ -1354,11 +1353,7 @@ function sanitizePath(component: string): string {
 /**
  * Deterministic JSON stringification with stable key ordering
  */
-export function stableStringify(
-  obj: any,
-  indent = 2,
-  order: "alpha" | string[] = "alpha"
-): string {
+export function stableStringify(obj: any, indent = 2, order: "alpha" | string[] = "alpha"): string {
   const seen = new WeakSet();
 
   const sorter = (a: string, b: string): number => {
@@ -1411,10 +1406,7 @@ export function stableStringify(
  * Get nested value using dot-path notation
  */
 function getPath(obj: any, path: string): any {
-  return path.split(".").reduce(
-    (o, k) => (o == null ? undefined : o[k]),
-    obj
-  );
+  return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
 
 /**
@@ -1487,9 +1479,7 @@ export function matches(doc: any, filter: Record<string, any>): boolean {
   }
 
   // Field-level conditions
-  return Object.entries(filter).every(([key, value]) =>
-    matchField(getPath(doc, key), value)
-  );
+  return Object.entries(filter).every(([key, value]) => matchField(getPath(doc, key), value));
 }
 ```
 
@@ -1502,10 +1492,7 @@ import { join, dirname } from "path";
 /**
  * Atomically write content to a file
  */
-export async function atomicWrite(
-  filePath: string,
-  content: string
-): Promise<void> {
+export async function atomicWrite(filePath: string, content: string): Promise<void> {
   const tempPath = `${filePath}.tmp`;
   const dir = dirname(filePath);
 
@@ -1711,23 +1698,23 @@ This design draws from:
 
 ## 19) Glossary
 
-| Term | Definition |
-|------|------------|
-| **Canonical format** | Deterministic JSON representation with stable key ordering |
-| **Mango query** | MongoDB-style query language for filtering documents |
-| **MCP** | Model Context Protocol - standard for AI agent tool integration |
-| **Sidecar index** | Separate JSON file containing pre-computed lookup data |
-| **Atomic write** | Write operation that completes fully or not at all |
-| **Type** | Top-level entity category (e.g., "task", "note") |
-| **Document** | Single JSON object with required `type` and `id` fields |
+| Term                 | Definition                                                      |
+| -------------------- | --------------------------------------------------------------- |
+| **Canonical format** | Deterministic JSON representation with stable key ordering      |
+| **Mango query**      | MongoDB-style query language for filtering documents            |
+| **MCP**              | Model Context Protocol - standard for AI agent tool integration |
+| **Sidecar index**    | Separate JSON file containing pre-computed lookup data          |
+| **Atomic write**     | Write operation that completes fully or not at all              |
+| **Type**             | Top-level entity category (e.g., "task", "note")                |
+| **Document**         | Single JSON object with required `type` and `id` fields         |
 
 ---
 
 ## 20) Changelog
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 0.1.0 | 2025-01-04 | Initial specification - removed all frontend/viewer references |
+| Version | Date       | Changes                                                        |
+| ------- | ---------- | -------------------------------------------------------------- |
+| 0.1.0   | 2025-01-04 | Initial specification - removed all frontend/viewer references |
 
 ---
 

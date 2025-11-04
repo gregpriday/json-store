@@ -21,11 +21,7 @@ export type {
 } from "./types.js";
 
 // Re-export cache types
-export type {
-  CacheEntry,
-  CacheOptions,
-  CacheStats,
-} from "./cache.js";
+export type { CacheEntry, CacheOptions, CacheStats } from "./cache.js";
 export { DocumentCache } from "./cache.js";
 
 // Re-export utilities

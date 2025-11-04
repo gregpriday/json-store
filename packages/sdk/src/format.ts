@@ -14,11 +14,7 @@ export interface FormatOptions {
  * @param order - Key ordering: "alpha" or explicit array (default: "alpha")
  * @returns Formatted JSON string with trailing newline
  */
-export function stableStringify(
-  obj: any,
-  indent = 2,
-  order: "alpha" | string[] = "alpha"
-): string {
+export function stableStringify(obj: any, indent = 2, order: "alpha" | string[] = "alpha"): string {
   const seen = new WeakSet();
 
   const sorter = (a: string, b: string): number => {

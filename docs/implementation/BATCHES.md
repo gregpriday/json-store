@@ -31,10 +31,10 @@ Parallel Branches:
 
 ### Issues in Batch 1
 
-| Issue | Title | Assignable To | Estimated Time |
-|-------|-------|---------------|----------------|
-| **#1** | Implement atomic file I/O operations | Agent A | 1-2 days |
-| **#2** | Implement in-memory document cache | Agent B | 1-2 days |
+| Issue  | Title                                | Assignable To | Estimated Time |
+| ------ | ------------------------------------ | ------------- | -------------- |
+| **#1** | Implement atomic file I/O operations | Agent A       | 1-2 days       |
+| **#2** | Implement in-memory document cache   | Agent B       | 1-2 days       |
 
 ### Why These Together?
 
@@ -53,6 +53,7 @@ Parallel Branches:
 ### Blockers for Next Batch
 
 Next batch cannot start until:
+
 - ✅ Atomic write functions exported and tested
 - ✅ Cache class exported and tested
 
@@ -66,10 +67,10 @@ Next batch cannot start until:
 
 ### Issues in Batch 2
 
-| Issue | Title | Assignable To | Estimated Time |
-|-------|-------|---------------|----------------|
-| **#3** | Implement complete Store CRUD operations | Agent A | 2 days |
-| **#4** | Implement query execution engine | Agent B | 2 days |
+| Issue  | Title                                    | Assignable To | Estimated Time |
+| ------ | ---------------------------------------- | ------------- | -------------- |
+| **#3** | Implement complete Store CRUD operations | Agent A       | 2 days         |
+| **#4** | Implement query execution engine         | Agent B       | 2 days         |
 
 ### Why These Together?
 
@@ -81,10 +82,12 @@ Next batch cannot start until:
 ### Suggested Workflow
 
 **Day 3**:
+
 - Agent A: Implement put/get/remove/list
 - Agent B: Start query operator implementation (can work in isolation)
 
 **Day 4**:
+
 - Agent A: Finish Store integration, add git support
 - Agent B: Integrate query with Store (needs #3 complete)
 
@@ -99,6 +102,7 @@ Next batch cannot start until:
 ### Blockers for Next Batch
 
 Next batch cannot start until:
+
 - ✅ Store.put/get/remove/list all work
 - ✅ Store.query returns correct results
 
@@ -112,12 +116,12 @@ Next batch cannot start until:
 
 ### Issues in Batch 3
 
-| Issue | Title | Assignable To | Estimated Time |
-|-------|-------|---------------|----------------|
-| **#5** | Implement CLI commands with Commander.js | Agent A | 2 days |
-| **#6** | Implement MCP server with stdio transport | Agent B | 2 days |
-| **#7** | Implement equality indexes | Agent C | 2 days |
-| **#8** | Implement format operation | Agent D | 1 day |
+| Issue  | Title                                     | Assignable To | Estimated Time |
+| ------ | ----------------------------------------- | ------------- | -------------- |
+| **#5** | Implement CLI commands with Commander.js  | Agent A       | 2 days         |
+| **#6** | Implement MCP server with stdio transport | Agent B       | 2 days         |
+| **#7** | Implement equality indexes                | Agent C       | 2 days         |
+| **#8** | Implement format operation                | Agent D       | 1 day          |
 
 ### Why These Together?
 
@@ -129,21 +133,25 @@ Next batch cannot start until:
 ### Suggested Assignments
 
 **Agent A (CLI)**:
+
 - Familiar with Commander.js
 - Focus on UX and error handling
 - Test with real filesystem
 
 **Agent B (MCP)**:
+
 - Familiar with MCP/Zod
 - Focus on tool schemas and validation
 - Test with MCP inspector
 
 **Agent C (Indexes)**:
+
 - Focus on performance optimization
 - Implement sidecar JSON files
 - Benchmark tests critical
 
 **Agent D (Format)**:
+
 - Simpler task, can finish in 1 day
 - Then help with testing or move to #9
 
@@ -159,6 +167,7 @@ Next batch cannot start until:
 ### Blockers for Next Batch
 
 Next batch cannot start until:
+
 - ✅ CLI can be used for all operations
 - ✅ MCP server functional
 - ✅ Indexes improve performance
@@ -174,9 +183,9 @@ Next batch cannot start until:
 
 ### Issues in Batch 4
 
-| Issue | Title | Assignable To | Estimated Time |
-|-------|-------|---------------|----------------|
-| **#9** | Implement stats operation | Agent A or D | 1 day |
+| Issue  | Title                     | Assignable To | Estimated Time |
+| ------ | ------------------------- | ------------- | -------------- |
+| **#9** | Implement stats operation | Agent A or D  | 1 day          |
 
 ### Why Only One Issue?
 
@@ -204,6 +213,7 @@ Next batch cannot start until:
 ### Blockers for Next Batch
 
 Next batch cannot start until:
+
 - ✅ All SDK functionality complete
 - ✅ All packages build successfully
 - ✅ No known bugs
@@ -218,10 +228,10 @@ Next batch cannot start until:
 
 ### Issues in Batch 5
 
-| Issue | Title | Assignable To | Estimated Time |
-|-------|-------|---------------|----------------|
-| **#10** | Add end-to-end integration tests | Agent A + Agent B | 2 days |
-| **#11** | Create comprehensive documentation | Agent C + Agent D | 2 days |
+| Issue   | Title                              | Assignable To     | Estimated Time |
+| ------- | ---------------------------------- | ----------------- | -------------- |
+| **#10** | Add end-to-end integration tests   | Agent A + Agent B | 2 days         |
+| **#11** | Create comprehensive documentation | Agent C + Agent D | 2 days         |
 
 ### Why These Together?
 
@@ -233,11 +243,13 @@ Next batch cannot start until:
 ### Task Breakdown
 
 **E2E Tests (Agents A + B)**:
+
 - Agent A: SDK and CLI E2E tests
 - Agent B: MCP server integration tests
 - Both: Performance benchmarks
 
 **Documentation (Agents C + D)**:
+
 - Agent C: API reference, query guide, examples
 - Agent D: MCP tools, operations runbook, troubleshooting
 
@@ -255,6 +267,7 @@ Next batch cannot start until:
 ### Release Readiness
 
 After Batch 5:
+
 - ✅ All functionality implemented
 - ✅ All tests passing
 - ✅ Documentation complete
@@ -264,13 +277,13 @@ After Batch 5:
 
 ## Batch Summary Table
 
-| Batch | Days | Issues | Can Start | Must Complete |
-|-------|------|--------|-----------|---------------|
-| **1** | 1-2 | #1, #2 | Immediately | Before Batch 2 |
-| **2** | 3-4 | #3, #4 | After Batch 1 | Before Batch 3 |
-| **3** | 5-8 | #5, #6, #7, #8 | After Batch 2 | Before Batch 4 |
-| **4** | 8-9 | #9 | After Batch 3 | Before Batch 5 |
-| **5** | 10-12 | #10, #11 | After Batch 4 | For release |
+| Batch | Days  | Issues         | Can Start     | Must Complete  |
+| ----- | ----- | -------------- | ------------- | -------------- |
+| **1** | 1-2   | #1, #2         | Immediately   | Before Batch 2 |
+| **2** | 3-4   | #3, #4         | After Batch 1 | Before Batch 3 |
+| **3** | 5-8   | #5, #6, #7, #8 | After Batch 2 | Before Batch 4 |
+| **4** | 8-9   | #9             | After Batch 3 | Before Batch 5 |
+| **5** | 10-12 | #10, #11       | After Batch 4 | For release    |
 
 ## Parallelization Strategy
 
@@ -288,13 +301,13 @@ After Batch 5:
 
 **Skill requirements per batch**:
 
-| Batch | Skills Needed |
-|-------|---------------|
-| 1 | Node.js file I/O, caching patterns |
-| 2 | TypeScript, data structures, algorithms |
-| 3 | CLI tools, MCP/Zod, performance optimization |
-| 4 | General TypeScript |
-| 5 | Testing frameworks, technical writing |
+| Batch | Skills Needed                                |
+| ----- | -------------------------------------------- |
+| 1     | Node.js file I/O, caching patterns           |
+| 2     | TypeScript, data structures, algorithms      |
+| 3     | CLI tools, MCP/Zod, performance optimization |
+| 4     | General TypeScript                           |
+| 5     | Testing frameworks, technical writing        |
 
 ## Risk Mitigation
 
@@ -325,6 +338,7 @@ After Batch 5:
 ### End of Each Batch
 
 **Sync meeting** to:
+
 1. Demo completed work
 2. Review test coverage
 3. Identify blockers for next batch
@@ -333,6 +347,7 @@ After Batch 5:
 ### Daily (Within Batch)
 
 **Quick standup** to:
+
 1. Share progress
 2. Identify integration points
 3. Resolve dependencies
@@ -341,23 +356,28 @@ After Batch 5:
 ## Success Metrics
 
 ### Batch 1
+
 - ✅ Zero data loss in atomic write tests
 - ✅ Cache hit rate >80% in benchmarks
 
 ### Batch 2
+
 - ✅ All CRUD operations <10ms
 - ✅ Query correctness: 100% test pass rate
 
 ### Batch 3
+
 - ✅ CLI commands all functional
 - ✅ MCP server works with Claude Desktop
 - ✅ Indexed queries 10x faster
 
 ### Batch 4
+
 - ✅ All integration tests passing
 - ✅ No known bugs
 
 ### Batch 5
+
 - ✅ E2E tests cover all workflows
 - ✅ Documentation is clear and complete
 - ✅ Ready for external users
