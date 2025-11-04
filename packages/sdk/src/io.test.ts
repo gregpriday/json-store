@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readdir, chmod, mkdir } from "node:fs/promises";
-import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { atomicWrite, readDocument, removeDocument, ensureDirectory, listFiles } from "./io.js";
