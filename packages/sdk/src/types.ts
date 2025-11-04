@@ -18,6 +18,8 @@ export interface StoreOptions {
   enableIndexes?: boolean;
   /** Fields to index per type: { type: [field1, field2] } */
   indexes?: Record<string, string[]>;
+  /** Maximum concurrency for format operations (default: 16, range: 1-64) */
+  formatConcurrency?: number;
 }
 
 /**
@@ -126,6 +128,30 @@ export interface StoreStats {
 export type FormatTarget = { all: true } | { type: string; id?: string };
 
 /**
+ * Canonical formatting options
+ */
+export interface CanonicalOptions {
+  /** Number of spaces for indentation */
+  indent: number;
+  /** Whether to use stable key ordering */
+  stableKeyOrder: boolean | string[];
+  /** End-of-line character (LF or CRLF) */
+  eol: "LF" | "CRLF";
+  /** Whether to add trailing newline */
+  trailingNewline: boolean;
+}
+
+/**
+ * Format operation options
+ */
+export interface FormatOptions {
+  /** Dry run mode - check formatting without writing (default: false) */
+  dryRun?: boolean;
+  /** Fail fast on first error (default: false, continues on errors) */
+  failFast?: boolean;
+}
+
+/**
  * Main store interface
  */
 export interface Store {
@@ -182,8 +208,10 @@ export interface Store {
   /**
    * Format documents to ensure canonical representation
    * @param target - What to format (all documents or specific type/document)
+   * @param options - Format operation options (dry run, fail fast)
+   * @returns Number of documents that were (or would be) reformatted
    */
-  format(target?: FormatTarget): Promise<void>;
+  format(target?: FormatTarget, options?: FormatOptions): Promise<number>;
 
   /**
    * Get statistics for the store or a specific type

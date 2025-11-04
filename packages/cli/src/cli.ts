@@ -9,7 +9,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { createInterface } from "readline/promises";
-import type { QuerySpec } from "@jsonstore/sdk";
+import type { QuerySpec, FormatTarget, Store } from "@jsonstore/sdk";
 import { openCliStore } from "./lib/store.js";
 import { resolveRoot } from "./lib/env.js";
 import { parseNonNegativeInt, parseJson } from "./lib/arg.js";
@@ -296,6 +296,7 @@ program
   .command("format [type] [id]")
   .description("Format documents to canonical representation")
   .option("--all", "Format all documents")
+  .option("--check", "Check formatting without writing (exit 1 if changes needed)")
   .action(async (type, id, options) => {
     await withTiming("cli.format", async () => {
       const opts = program.opts();
@@ -316,20 +317,38 @@ program
       const root = resolveRoot(opts.root);
       const store = openCliStore(root);
 
+      let target: FormatTarget;
       if (options.all) {
-        await store.format({ all: true });
-        if (!opts.quiet) {
-          console.log("Formatted all documents");
-        }
+        target = { all: true };
       } else if (type && id) {
-        await store.format({ type, id });
-        if (!opts.quiet) {
-          console.log(`Formatted ${type}/${id}`);
+        target = { type, id };
+      } else {
+        target = { type };
+      }
+
+      const count = await store.format(target, {
+        dryRun: Boolean(options.check),
+        failFast: true,
+      });
+
+      if (options.check) {
+        if (count > 0) {
+          if (!opts.quiet) {
+            console.log(`✗ ${count} document(s) need formatting`);
+          }
+          throw new CliError("Formatting check failed", { exitCode: 1 });
+        } else {
+          if (!opts.quiet) {
+            console.log("✓ All documents are properly formatted");
+          }
         }
-      } else if (type) {
-        await store.format({ type });
+      } else {
         if (!opts.quiet) {
-          console.log(`Formatted all ${type} documents`);
+          if (count > 0) {
+            console.log(`✓ Formatted ${count} document(s)`);
+          } else {
+            console.log("✓ All documents already canonical");
+          }
         }
       }
     });
