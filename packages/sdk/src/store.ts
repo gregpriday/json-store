@@ -20,12 +20,7 @@ import type {
 import { DocumentCache } from "./cache.js";
 import { validateKey, validateDocument, validateName } from "./validation.js";
 import { stableStringify } from "./format.js";
-import {
-  atomicWrite,
-  readDocument,
-  removeDocument,
-  listFiles,
-} from "./io.js";
+import { atomicWrite, readDocument, removeDocument, listFiles } from "./io.js";
 
 const execFile = promisify(execFileCallback);
 

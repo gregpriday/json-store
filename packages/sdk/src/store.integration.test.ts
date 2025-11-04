@@ -62,10 +62,7 @@ describe("Store integration tests", () => {
 
     it("should handle multiple types in same store", async () => {
       // Create users
-      await store.put(
-        { type: "user", id: "alice" },
-        { type: "user", id: "alice", name: "Alice" }
-      );
+      await store.put({ type: "user", id: "alice" }, { type: "user", id: "alice", name: "Alice" });
       await store.put({ type: "user", id: "bob" }, { type: "user", id: "bob", name: "Bob" });
 
       // Create posts
@@ -136,12 +133,14 @@ describe("Store integration tests", () => {
       });
 
       // Update half concurrently
-      const updates = userIds.slice(0, 10).map((id) =>
-        store.put(
-          { type: "user", id },
-          { type: "user", id, name: `Updated ${id}`, updated: true }
-        )
-      );
+      const updates = userIds
+        .slice(0, 10)
+        .map((id) =>
+          store.put(
+            { type: "user", id },
+            { type: "user", id, name: `Updated ${id}`, updated: true }
+          )
+        );
       await Promise.all(updates);
 
       // Remove half concurrently
@@ -367,10 +366,7 @@ describe("Store integration tests", () => {
       // Create 100 documents
       for (let i = 0; i < count; i++) {
         writes.push(
-          store.put(
-            { type: "item", id: `item${i}` },
-            { type: "item", id: `item${i}`, value: i }
-          )
+          store.put({ type: "item", id: `item${i}` }, { type: "item", id: `item${i}`, value: i })
         );
       }
 

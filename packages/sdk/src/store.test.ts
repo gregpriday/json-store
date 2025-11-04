@@ -172,7 +172,6 @@ describe("Store CRUD operations", () => {
       await store.put(key, doc);
 
       // Spy on readDocument to verify caching behavior
-      const { readDocument } = await import("./io.js");
       const { vi } = await import("vitest");
       const readSpy = vi.spyOn(await import("./io.js"), "readDocument");
 
@@ -290,14 +289,8 @@ describe("Store CRUD operations", () => {
     });
 
     it("should return sorted IDs", async () => {
-      await store.put(
-        { type: "user", id: "zebra" },
-        { type: "user", id: "zebra", name: "Zebra" }
-      );
-      await store.put(
-        { type: "user", id: "alpha" },
-        { type: "user", id: "alpha", name: "Alpha" }
-      );
+      await store.put({ type: "user", id: "zebra" }, { type: "user", id: "zebra", name: "Zebra" });
+      await store.put({ type: "user", id: "alpha" }, { type: "user", id: "alpha", name: "Alpha" });
       await store.put({ type: "user", id: "mike" }, { type: "user", id: "mike", name: "Mike" });
 
       const result = await store.list("user");
@@ -315,7 +308,9 @@ describe("Store CRUD operations", () => {
     });
 
     it("should validate type name", async () => {
-      await expect(store.list("user/../secret")).rejects.toThrow("type contains invalid characters");
+      await expect(store.list("user/../secret")).rejects.toThrow(
+        "type contains invalid characters"
+      );
     });
 
     it("should return empty array for type with no documents", async () => {
@@ -373,7 +368,7 @@ describe("Store CRUD operations", () => {
       const content = await readFile(filePath, "utf-8");
 
       // Should use 4-space indentation
-      expect(content).toContain("    \"");
+      expect(content).toContain('    "');
       // Check for 4 spaces specifically (not 2 spaces at start of key lines)
       const lines = content.split("\n");
       const keyLines = lines.filter((l) => l.includes('"id"') || l.includes('"name"'));
