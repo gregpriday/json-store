@@ -21,6 +21,12 @@ import type {
   FormatTarget,
   FormatOptions,
   CanonicalOptions,
+  HierarchicalKey,
+  Slug,
+  MaterializedPath,
+  Page,
+  ListChildrenOptions,
+  RepairReport,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
 import { validateDocument, validateName, validateKey, validateTypeName } from "./validation.js";
@@ -30,6 +36,8 @@ import { stableStringify } from "./format.js";
 import { IndexManager } from "./indexes.js";
 import { canonicalize, safeParseJson } from "./format/canonical.js";
 import { DocumentReadError, FormatError, DocumentNotFoundError } from "./errors.js";
+import { HierarchyManager } from "./hierarchy/hierarchy-manager.js";
+import { validateMaterializedPath, validatePathDepth } from "./validation.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -58,9 +66,10 @@ const execFile = promisify(execFileCallback);
  * ```
  */
 class JSONStore implements Store {
-  #options: Required<StoreOptions>;
+  #options: Required<StoreOptions & { enableHierarchy?: boolean; experimental?: any }>;
   #cache: DocumentCache;
   #indexManager: IndexManager;
+  #hierarchyManager?: HierarchyManager;
   #rootPath: string;
 
   constructor(options: StoreOptions) {
@@ -89,6 +98,8 @@ class JSONStore implements Store {
       enableIndexes: options.enableIndexes ?? false,
       indexes: options.indexes ?? {},
       formatConcurrency,
+      enableHierarchy: options.enableHierarchy ?? false,
+      experimental: options.experimental ?? {},
     };
 
     // Initialize cache with default settings
@@ -103,6 +114,21 @@ class JSONStore implements Store {
       indent: this.#options.indent,
       stableKeyOrder: this.#options.stableKeyOrder,
     });
+
+    // Initialize hierarchy manager if enabled
+    if (this.#options.enableHierarchy) {
+      this.#hierarchyManager = new HierarchyManager({
+        root: resolvedRoot,
+        indent: this.#options.indent,
+        stableKeyOrder: this.#options.stableKeyOrder,
+        maxDepth: this.#options.experimental?.maxDepth,
+      });
+
+      // Initialize async (recover from crashes)
+      this.#hierarchyManager.initialize().catch((err) => {
+        console.error("Failed to initialize hierarchy manager:", err);
+      });
+    }
 
     this.#rootPath = canonicalRoot;
   }
@@ -739,6 +765,21 @@ class JSONStore implements Store {
   /**
    * Get indexed fields for a type
    */
+  async #listTypes(): Promise<string[]> {
+    const dataDir = path.join(this.#rootPath);
+    try {
+      const entries = await fs.readdir(dataDir, { withFileTypes: true });
+      return entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("_") && !e.name.startsWith("."))
+        .map((e) => e.name);
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        return [];
+      }
+      throw err;
+    }
+  }
+
   #getIndexedFields(type: string): string[] {
     return this.#options.indexes?.[type] ?? [];
   }
@@ -1268,6 +1309,166 @@ class JSONStore implements Store {
         throw err;
       }
     }
+  }
+
+  /**
+   * Store or update a document with hierarchical relationships
+   */
+  async putHierarchical(
+    key: HierarchicalKey,
+    doc: Document,
+    parentKey?: Key,
+    slug?: Slug,
+    opts?: WriteOptions
+  ): Promise<void> {
+    if (!this.#hierarchyManager) {
+      throw new Error("Hierarchy support not enabled. Set enableHierarchy: true in StoreOptions.");
+    }
+
+    // Validate key and document
+    validateKey(key);
+    validateDocument(key, doc);
+
+    // If there's a parent, load its document to get the parent path
+    let parentPath: MaterializedPath | undefined;
+    if (parentKey) {
+      const parentDoc = await this.get(parentKey);
+      if (!parentDoc) {
+        throw new Error(`Parent document not found: ${parentKey.type}/${parentKey.id}`);
+      }
+      parentPath = (parentDoc as any).path as MaterializedPath | undefined;
+    }
+
+    // Compute the materialized path if slug is provided
+    if (slug) {
+      let computedPath: string;
+      if (parentPath) {
+        // Compute child path from parent path + slug
+        computedPath = `${parentPath}/${slug}`;
+      } else {
+        // Root level document
+        computedPath = `/${slug}`;
+      }
+
+      // Validate the path
+      const validatedPath = validateMaterializedPath(computedPath);
+
+      // Check depth limit
+      const maxDepth = this.#options.experimental?.maxDepth ?? 32;
+      validatePathDepth(validatedPath, maxDepth);
+
+      // Assign validated path to document
+      (doc as any).path = validatedPath;
+    }
+
+    // Get old document for hierarchy updates
+    const oldDoc = await this.get(key);
+
+    // Perform regular put operation FIRST to ensure document exists before index
+    await this.put(key, doc, opts);
+
+    // Perform hierarchical indexing via HierarchyManager
+    // This happens after document write to ensure index never points to non-existent doc
+    await this.#hierarchyManager.putHierarchical(key, doc, parentKey, slug, oldDoc ?? undefined);
+  }
+
+  /**
+   * Resolve entity by scoped slug path
+   */
+  async getByPath(scope: string, _type: string, slugPath: string): Promise<Document | null> {
+    if (!this.#hierarchyManager) {
+      throw new Error("Hierarchy support not enabled. Set enableHierarchy: true in StoreOptions.");
+    }
+
+    // For now, treat scope+type+slugPath as a materialized path
+    // TODO: Implement proper scoped slug resolution
+    const path = validateMaterializedPath(`/${scope}/${slugPath}`);
+
+    const entry = await this.#hierarchyManager.getByPath(path);
+    if (!entry) {
+      return null;
+    }
+
+    // Load the actual document
+    return await this.get({ type: entry.type, id: entry.id });
+  }
+
+  /**
+   * List children of a parent with pagination
+   */
+  async listChildren(_parentKey: Key, _options?: ListChildrenOptions): Promise<Page<Document>> {
+    if (!this.#hierarchyManager) {
+      throw new Error("Hierarchy support not enabled. Set enableHierarchy: true in StoreOptions.");
+    }
+
+    // TODO: Implement children enumeration
+    throw new Error("listChildren not yet implemented");
+  }
+
+  /**
+   * Find document by materialized path
+   */
+  async findByPath(path: MaterializedPath): Promise<Document | null> {
+    if (!this.#hierarchyManager) {
+      throw new Error("Hierarchy support not enabled. Set enableHierarchy: true in StoreOptions.");
+    }
+
+    const entry = await this.#hierarchyManager.findByPath(path);
+    if (!entry) {
+      return null;
+    }
+
+    // Load the actual document
+    return await this.get({ type: entry.type, id: entry.id });
+  }
+
+  /**
+   * Rebuild hierarchical indexes from primary documents
+   */
+  async repairHierarchy(type?: string): Promise<RepairReport> {
+    if (!this.#hierarchyManager) {
+      throw new Error("Hierarchy support not enabled. Set enableHierarchy: true in StoreOptions.");
+    }
+
+    const startTime = performance.now();
+    const types = type ? [type] : await this.#listTypes();
+    const errors: Array<{ path: string; error: string }> = [];
+    let documentsScanned = 0;
+    let indexesRebuilt = 0;
+
+    // Load all documents
+    const allDocs: Document[] = [];
+    for (const t of types) {
+      try {
+        const ids = await this.list(t);
+        for (const id of ids) {
+          try {
+            const doc = await this.get({ type: t, id });
+            if (doc) {
+              allDocs.push(doc);
+              documentsScanned++;
+            }
+          } catch (err: any) {
+            errors.push({ path: `${t}/${id}`, error: err.message });
+          }
+        }
+      } catch (err: any) {
+        errors.push({ path: t, error: err.message });
+      }
+    }
+
+    // Rebuild indexes
+    indexesRebuilt = await this.#hierarchyManager.repairHierarchy(allDocs);
+
+    const durationMs = performance.now() - startTime;
+
+    return {
+      types,
+      documentsScanned,
+      indexesRebuilt,
+      errors,
+      durationMs,
+    };
   }
 
   async close(): Promise<void> {

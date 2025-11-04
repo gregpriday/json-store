@@ -20,6 +20,17 @@ export interface StoreOptions {
   indexes?: Record<string, string[]>;
   /** Maximum concurrency for format operations (default: 16, range: 1-64) */
   formatConcurrency?: number;
+  /** Enable hierarchical key-value storage with secondary indexes (default: false) */
+  enableHierarchy?: boolean;
+  /** Experimental options */
+  experimental?: {
+    /** Index version for backward compatibility tracking (default: 1) */
+    indexVersion?: number;
+    /** Maximum depth for hierarchical trees (default: 32) */
+    maxDepth?: number;
+    /** Maximum number of nodes to reparent in a single operation (default: 10000) */
+    maxReparent?: number;
+  };
 }
 
 /**
@@ -166,6 +177,111 @@ export interface FormatOptions {
 }
 
 /**
+ * Branded type for normalized slugs (lowercase, ASCII-hyphen, NFC normalized)
+ */
+export type Slug = string & { readonly __brand: "Slug" };
+
+/**
+ * Branded type for materialized paths (canonical, NFC, leading /, segments are slugs)
+ */
+export type MaterializedPath = string & { readonly __brand: "MaterializedPath" };
+
+/**
+ * Scope dimension for scoped slug resolution
+ * Example: { dimension: "country", value: "US" }
+ */
+export interface ScopeDimension {
+  dimension: string;
+  value: string;
+}
+
+/**
+ * Hierarchical key with parent reference and slug
+ */
+export interface HierarchicalKey extends Key {
+  /** Optional parent key for hierarchical relationships */
+  parentKey?: Key;
+  /** Optional slug for scoped resolution (must be unique within scope) */
+  slug?: Slug;
+  /** Materialized path for efficient ancestor queries */
+  path?: MaterializedPath;
+  /** Scope dimensions for slug uniqueness (e.g., country, region) */
+  scope?: ScopeDimension[];
+}
+
+/**
+ * Path specification for slug-based resolution
+ */
+export interface PathSpec {
+  /** Scope value (e.g., "US" for country scope) */
+  scope: string;
+  /** Entity type */
+  type: string;
+  /** Slug path (e.g., "new-york/new-york" for city in NY region) */
+  slugPath: string;
+}
+
+/**
+ * Children index metadata
+ */
+export interface ChildrenIndex {
+  /** Array of child IDs */
+  ids: string[];
+  /** Total number of children */
+  total: number;
+  /** Last update timestamp */
+  updated: string;
+}
+
+/**
+ * Pagination cursor for child enumeration (opaque to users)
+ */
+export interface PaginationCursor {
+  /** Bucket index */
+  bucket: number;
+  /** Last sort key in previous page */
+  lastSortKey: string;
+}
+
+/**
+ * Options for listing children
+ */
+export interface ListChildrenOptions {
+  /** Page size (default: 100, max: 1000) */
+  pageSize?: number;
+  /** Opaque cursor from previous page */
+  cursor?: string;
+}
+
+/**
+ * Paginated result page
+ */
+export interface Page<T> {
+  /** Items in this page */
+  items: T[];
+  /** Total count (if known) */
+  total?: number;
+  /** Opaque cursor for next page (undefined if no more pages) */
+  nextCursor?: string;
+}
+
+/**
+ * Report from hierarchy repair operation
+ */
+export interface RepairReport {
+  /** Types that were repaired */
+  types: string[];
+  /** Total documents scanned */
+  documentsScanned: number;
+  /** Indexes rebuilt */
+  indexesRebuilt: number;
+  /** Errors encountered (non-fatal) */
+  errors: Array<{ path: string; error: string }>;
+  /** Duration in milliseconds */
+  durationMs: number;
+}
+
+/**
  * Main store interface
  */
 export interface Store {
@@ -244,4 +360,53 @@ export interface Store {
    * Close the store and clean up resources
    */
   close(): Promise<void>;
+
+  // Hierarchical operations (requires enableHierarchy: true)
+
+  /**
+   * Store or update a document with hierarchical relationships
+   * @param key - Document key (type and id)
+   * @param doc - Document to store
+   * @param parentKey - Optional parent key for hierarchy
+   * @param slug - Optional slug for scoped resolution (must be unique within scope)
+   * @param opts - Optional write options
+   */
+  putHierarchical(
+    key: HierarchicalKey,
+    doc: Document,
+    parentKey?: Key,
+    slug?: Slug,
+    opts?: WriteOptions
+  ): Promise<void>;
+
+  /**
+   * Resolve entity by scoped slug path
+   * @param scope - Scope value (e.g., "US")
+   * @param type - Entity type
+   * @param slugPath - Slug path (e.g., "new-york/new-york")
+   * @returns Document if found, null otherwise
+   */
+  getByPath(scope: string, type: string, slugPath: string): Promise<Document | null>;
+
+  /**
+   * List children of a parent with pagination
+   * @param parentKey - Parent key
+   * @param options - Pagination options
+   * @returns Paginated results
+   */
+  listChildren(parentKey: Key, options?: ListChildrenOptions): Promise<Page<Document>>;
+
+  /**
+   * Find document by materialized path
+   * @param path - Materialized path (e.g., "/US/NY")
+   * @returns Document if found, null otherwise
+   */
+  findByPath(path: MaterializedPath): Promise<Document | null>;
+
+  /**
+   * Rebuild hierarchical indexes from primary documents
+   * @param type - Optional type to rebuild (omit for all types)
+   * @returns Repair report
+   */
+  repairHierarchy(type?: string): Promise<RepairReport>;
 }

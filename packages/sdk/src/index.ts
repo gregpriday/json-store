@@ -20,6 +20,17 @@ export type {
   StoreStats,
   FormatTarget,
   Store,
+  // Hierarchical types
+  Slug,
+  MaterializedPath,
+  ScopeDimension,
+  HierarchicalKey,
+  PathSpec,
+  ChildrenIndex,
+  PaginationCursor,
+  ListChildrenOptions,
+  Page,
+  RepairReport,
 } from "./types.js";
 
 // Re-export cache types
@@ -29,7 +40,24 @@ export { DocumentCache } from "./cache.js";
 // Re-export utilities
 export { stableStringify, normalizeJSON, jsonEqual } from "./format.js";
 export { matches, project, sortDocuments, paginate, getPath } from "./query.js";
-export { validateKey, validateDocument, validateName, sanitizePath } from "./validation.js";
+export {
+  validateKey,
+  validateDocument,
+  validateName,
+  sanitizePath,
+  validateSlug,
+  validateMaterializedPath,
+  validatePathDepth,
+} from "./validation.js";
+
+// Re-export hierarchy utilities
+export {
+  normalizeSlug,
+  encodePath,
+  decodePath,
+  computePath,
+  childrenSortKey,
+} from "./hierarchy/codec.js";
 
 // Re-export I/O operations
 export { atomicWrite, readDocument, removeDocument, ensureDirectory, listFiles } from "./io.js";

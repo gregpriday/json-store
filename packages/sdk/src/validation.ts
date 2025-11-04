@@ -2,7 +2,7 @@
  * Validation utilities for store operations
  */
 
-import type { Key, Document } from "./types.js";
+import type { Key, Document, Slug, MaterializedPath } from "./types.js";
 
 /**
  * Valid characters for type and ID: alphanumeric, underscore, dash, dot
@@ -152,5 +152,163 @@ export function validateTypeName(typeName: string): void {
   // Reject names starting with underscore or dot (reserved for internal use)
   if (typeName.startsWith("_") || typeName.startsWith(".")) {
     throw new Error(`Type name cannot start with "_" or ".": "${typeName}"`);
+  }
+}
+
+/**
+ * Slug validation pattern: lowercase letters, digits, hyphens only
+ * Must start with letter or digit, cannot have consecutive hyphens
+ */
+const VALID_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Zero-width and control characters that should be rejected
+ */
+const ZERO_WIDTH_CHARS = /[\u200B-\u200D\u2060\uFEFF\u00AD]/;
+
+/**
+ * URL-encoded slash patterns
+ */
+const ENCODED_SLASH_PATTERN = /%2[fF]/;
+
+/**
+ * Validate and normalize a slug
+ * Slugs must be lowercase, ASCII alphanumeric with hyphens, NFC normalized
+ * @param slug - Slug to validate
+ * @returns Validated slug
+ * @throws Error if slug is invalid
+ */
+export function validateSlug(slug: string): Slug {
+  if (!slug || typeof slug !== "string") {
+    throw new Error("Slug must be a non-empty string");
+  }
+
+  // Normalize to NFC form
+  const normalized = slug.normalize("NFC");
+
+  // Check for zero-width characters
+  if (ZERO_WIDTH_CHARS.test(normalized)) {
+    throw new Error(`Slug contains zero-width or control characters: "${slug}"`);
+  }
+
+  // Check for path traversal attempts
+  if (normalized.includes("..") || normalized === ".") {
+    throw new Error(`Slug cannot contain path traversal sequences: "${slug}"`);
+  }
+
+  // Check for URL-encoded slashes
+  if (ENCODED_SLASH_PATTERN.test(normalized)) {
+    throw new Error(`Slug cannot contain URL-encoded slashes: "${slug}"`);
+  }
+
+  // Check for slashes
+  if (normalized.includes("/") || normalized.includes("\\")) {
+    throw new Error(`Slug cannot contain slashes: "${slug}"`);
+  }
+
+  // Must be lowercase
+  if (normalized !== normalized.toLowerCase()) {
+    throw new Error(`Slug must be lowercase: "${slug}"`);
+  }
+
+  // Check pattern: alphanumeric + hyphens, no consecutive hyphens
+  if (!VALID_SLUG_PATTERN.test(normalized)) {
+    throw new Error(
+      `Slug contains invalid characters or format: "${slug}". ` +
+        `Only lowercase letters, digits, and single hyphens allowed. ` +
+        `Must start and end with letter or digit.`
+    );
+  }
+
+  // Check for reserved prefixes
+  if (normalized.startsWith("_") || normalized.startsWith(".")) {
+    throw new Error(`Slug cannot start with "_" or ".": "${slug}"`);
+  }
+
+  // Max length check (reasonable limit for filesystem)
+  if (normalized.length > 255) {
+    throw new Error(`Slug too long (max 255 characters): "${slug}"`);
+  }
+
+  return normalized as Slug;
+}
+
+/**
+ * Validate a materialized path
+ * Paths must start with /, contain only slugs as segments, NFC normalized
+ * @param path - Path to validate
+ * @returns Validated path
+ * @throws Error if path is invalid
+ */
+export function validateMaterializedPath(path: string): MaterializedPath {
+  if (!path || typeof path !== "string") {
+    throw new Error("Path must be a non-empty string");
+  }
+
+  // Normalize to NFC form
+  const normalized = path.normalize("NFC");
+
+  // Must start with /
+  if (!normalized.startsWith("/")) {
+    throw new Error(`Path must start with "/": "${path}"`);
+  }
+
+  // Cannot end with / unless it's just "/"
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    throw new Error(`Path cannot end with "/": "${path}"`);
+  }
+
+  // Check for zero-width characters
+  if (ZERO_WIDTH_CHARS.test(normalized)) {
+    throw new Error(`Path contains zero-width or control characters: "${path}"`);
+  }
+
+  // Check for double slashes
+  if (normalized.includes("//")) {
+    throw new Error(`Path cannot contain double slashes: "${path}"`);
+  }
+
+  // Check for path traversal
+  if (normalized.includes("/..") || normalized.includes("./")) {
+    throw new Error(`Path cannot contain traversal sequences: "${path}"`);
+  }
+
+  // Check for URL-encoded slashes
+  if (ENCODED_SLASH_PATTERN.test(normalized)) {
+    throw new Error(`Path cannot contain URL-encoded slashes: "${path}"`);
+  }
+
+  // Split and validate each segment
+  const segments = normalized.split("/").slice(1); // Skip empty first element
+  if (segments.length === 0 && normalized !== "/") {
+    throw new Error(`Path must contain at least one segment: "${path}"`);
+  }
+
+  for (const segment of segments) {
+    if (!segment) {
+      throw new Error(`Path contains empty segment: "${path}"`);
+    }
+    // Each segment should be a valid slug
+    validateSlug(segment);
+  }
+
+  // Max length check (combined path length)
+  if (normalized.length > 1024) {
+    throw new Error(`Path too long (max 1024 characters): "${path}"`);
+  }
+
+  return normalized as MaterializedPath;
+}
+
+/**
+ * Validate path depth doesn't exceed maximum
+ * @param path - Path to check
+ * @param maxDepth - Maximum allowed depth (default: 32)
+ * @throws Error if depth exceeds maximum
+ */
+export function validatePathDepth(path: MaterializedPath, maxDepth: number = 32): void {
+  const depth = path === "/" ? 0 : path.split("/").length - 1;
+  if (depth > maxDepth) {
+    throw new Error(`Path depth ${depth} exceeds maximum ${maxDepth}: "${path}"`);
   }
 }
