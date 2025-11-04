@@ -1,4 +1,4 @@
-name: CI
+name: Lint
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
       - main
 
 jobs:
-  test:
-    name: Test & Lint
+  lint:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
 
     steps:
@@ -39,6 +39,3 @@ jobs:
 
       - name: Type check
         run: pnpm run typecheck
-
-      - name: Run tests
-        run: pnpm run test
