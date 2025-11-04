@@ -9,6 +9,8 @@ export type {
   StoreOptions,
   Key,
   Document,
+  FieldOperator,
+  LogicalOperator,
   Filter,
   Projection,
   Sort,
@@ -24,6 +26,20 @@ export type {
 export { stableStringify, normalizeJSON, jsonEqual } from "./format.js";
 export { matches, project, sortDocuments, paginate, getPath } from "./query.js";
 export { validateKey, validateDocument, validateName, sanitizePath } from "./validation.js";
+
+// Re-export I/O operations
+export { atomicWrite, readDocument, removeDocument, ensureDirectory, listFiles } from "./io.js";
+
+// Re-export errors
+export {
+  JSONStoreError,
+  DocumentNotFoundError,
+  DocumentReadError,
+  DocumentWriteError,
+  DocumentRemoveError,
+  DirectoryError,
+  ListFilesError,
+} from "./errors.js";
 
 // Store implementation will be added in next phase
 export { openStore } from "./store.js";

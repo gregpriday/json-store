@@ -29,7 +29,7 @@ export interface Key {
 /**
  * Base document structure - all documents must include type and id
  */
-export type Document = Record<string, any> & {
+export type Document = Record<string, unknown> & {
   type: string;
   id: string;
 };
