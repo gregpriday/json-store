@@ -44,8 +44,15 @@ describe("IndexManager", () => {
         );
       }
 
-      // Build index
-      await indexManager.ensureIndex("task", "status");
+      // Build index and verify stats
+      const stats = await indexManager.ensureIndex("task", "status");
+
+      // Verify stats
+      expect(stats.field).toBe("status");
+      expect(stats.docsScanned).toBe(3);
+      expect(stats.keys).toBe(2); // "open" and "closed"
+      expect(stats.bytes).toBeGreaterThan(0);
+      expect(stats.durationMs).toBeGreaterThanOrEqual(0);
 
       // Verify index file exists
       const indexPath = path.join(TEST_ROOT, "task", "_indexes", "status.json");
@@ -619,13 +626,85 @@ describe("IndexManager", () => {
         );
       }
 
-      await indexManager.rebuildIndexes("task", ["status"]);
+      await indexManager.rebuildIndexes("task", { fields: ["status"] });
 
       const hasStatus = await indexManager.hasIndex("task", "status");
       const hasPriority = await indexManager.hasIndex("task", "priority");
 
       expect(hasStatus).toBe(true);
       expect(hasPriority).toBe(false);
+    });
+
+    it("should return statistics when rebuilding", async () => {
+      const typeDir = path.join(TEST_ROOT, "task");
+      await fs.mkdir(typeDir, { recursive: true });
+
+      const docs: Document[] = [
+        { type: "task", id: "001", status: "open", priority: 1 },
+        { type: "task", id: "002", status: "closed", priority: 2 },
+        { type: "task", id: "003", status: "open", priority: 1 },
+      ];
+
+      for (const doc of docs) {
+        await fs.writeFile(
+          path.join(typeDir, `${doc.id}.json`),
+          JSON.stringify(doc, null, 2) + "\n"
+        );
+      }
+
+      const summary = await indexManager.rebuildIndexes("task", { fields: ["status"] });
+
+      expect(summary.type).toBe("task");
+      expect(summary.docsScanned).toBe(3);
+      expect(summary.fields).toHaveLength(1);
+      expect(summary.fields[0].field).toBe("status");
+      expect(summary.fields[0].docsScanned).toBe(3);
+      expect(summary.fields[0].keys).toBe(2); // "open" and "closed"
+      expect(summary.fields[0].bytes).toBeGreaterThan(0);
+      expect(summary.fields[0].durationMs).toBeGreaterThanOrEqual(0);
+      expect(summary.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should delete existing indexes when force is true", async () => {
+      const typeDir = path.join(TEST_ROOT, "task");
+      await fs.mkdir(typeDir, { recursive: true });
+
+      const docs: Document[] = [
+        { type: "task", id: "001", status: "open" },
+      ];
+
+      for (const doc of docs) {
+        await fs.writeFile(
+          path.join(typeDir, `${doc.id}.json`),
+          JSON.stringify(doc, null, 2) + "\n"
+        );
+      }
+
+      // Create an index with stale data
+      await indexManager.ensureIndex("task", "status");
+      const indexPath = path.join(TEST_ROOT, "task", "_indexes", "status.json");
+      const mtimeBefore = (await fs.stat(indexPath)).mtime;
+
+      // Wait a bit to ensure mtime difference
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Force rebuild should delete and recreate
+      await indexManager.rebuildIndexes("task", { fields: ["status"], force: true });
+
+      const mtimeAfter = (await fs.stat(indexPath)).mtime;
+      expect(mtimeAfter.getTime()).toBeGreaterThan(mtimeBefore.getTime());
+    });
+
+    it("should return empty summary when no indexes to rebuild", async () => {
+      const typeDir = path.join(TEST_ROOT, "task");
+      await fs.mkdir(typeDir, { recursive: true });
+
+      const summary = await indexManager.rebuildIndexes("task");
+
+      expect(summary.type).toBe("task");
+      expect(summary.docsScanned).toBe(0);
+      expect(summary.fields).toEqual([]);
+      expect(summary.durationMs).toBeGreaterThanOrEqual(0);
     });
   });
 

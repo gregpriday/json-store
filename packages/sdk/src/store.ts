@@ -30,6 +30,10 @@ import type {
   SchemaRegistry,
   SchemaValidator,
   SchemaRef,
+  RebuildIndexesOptions,
+  ReindexOptions,
+  ReindexSummary,
+  ReindexAllSummary,
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
 import {
@@ -944,7 +948,36 @@ class JSONStore implements Store {
   }
 
   #getIndexedFields(type: string): string[] {
-    return this.#options.indexes?.[type] ?? [];
+    const fields = this.#options.indexes?.[type] ?? [];
+    return fields.filter((field) => !this.#isReservedIndexField(field));
+  }
+
+  #isReservedIndexField(field: string): boolean {
+    return field === "_slug" || field === "_alias";
+  }
+
+  #syncTrackedIndexes(type: string, fields: readonly string[]): void {
+    const filteredExisting =
+      this.#options.indexes[type]?.filter((field) => !this.#isReservedIndexField(field)) ?? [];
+    const filteredFields = fields.filter((field) => !this.#isReservedIndexField(field));
+
+    if (filteredFields.length === 0) {
+      if (filteredExisting.length > 0) {
+        this.#options.indexes[type] = filteredExisting;
+      } else if (this.#options.indexes[type]) {
+        delete this.#options.indexes[type];
+      }
+      return;
+    }
+
+    const merged = [...filteredExisting];
+    for (const field of filteredFields) {
+      if (!merged.includes(field)) {
+        merged.push(field);
+      }
+    }
+
+    this.#options.indexes[type] = merged;
   }
 
   /**
@@ -1025,20 +1058,107 @@ class JSONStore implements Store {
   async ensureIndex(type: string, field: string): Promise<void> {
     validateName(type, "type");
     validateName(field, "id"); // Reuse validation pattern
+    if (this.#isReservedIndexField(field)) {
+      throw new Error(`Cannot manage reserved index field "${field}" with ensureIndex()`);
+    }
     await this.#indexManager.ensureIndex(type, field);
 
-    // Track this index for future updates
-    const typeIndexes = this.#options.indexes[type];
-    if (!typeIndexes) {
-      this.#options.indexes[type] = [field];
-    } else if (!typeIndexes.includes(field)) {
-      typeIndexes.push(field);
-    }
+    this.#syncTrackedIndexes(type, [field]);
   }
 
-  async rebuildIndexes(type: string, fields?: string[]): Promise<void> {
+  async rebuildIndexes(type: string, options?: RebuildIndexesOptions): Promise<ReindexSummary> {
     validateName(type, "type");
-    await this.#indexManager.rebuildIndexes(type, fields);
+    let fields = options?.fields;
+
+    if (!fields || fields.length === 0) {
+      const configuredFields = this.#options.indexes[type] ?? [];
+      const diskFields = await this.#indexManager.listIndexes(type);
+      fields = [...new Set([...configuredFields, ...diskFields])];
+    } else {
+      fields = [...new Set(fields)];
+    }
+
+    const filteredFields = fields.filter((field) => !this.#isReservedIndexField(field));
+
+    if (filteredFields.length === 0) {
+      this.#syncTrackedIndexes(type, []);
+      return {
+        type,
+        docsScanned: 0,
+        fields: [],
+        durationMs: 0,
+      };
+    }
+
+    const rebuildOptions: RebuildIndexesOptions = {
+      ...(options ?? {}),
+      fields: filteredFields,
+    };
+
+    const summary = await this.#indexManager.rebuildIndexes(type, rebuildOptions);
+
+    const rebuiltFields = summary.fields.map((f) => f.field);
+    this.#syncTrackedIndexes(type, rebuiltFields);
+
+    return summary;
+  }
+
+  async reindex(options?: ReindexOptions): Promise<ReindexAllSummary> {
+    const startTime = performance.now();
+    const types: ReindexSummary[] = [];
+    let totalDocs = 0;
+    let totalIndexes = 0;
+
+    // Get all types that have indexes
+    const typesWithIndexes = new Set<string>();
+
+    // Add types from configured indexes
+    for (const type of Object.keys(this.#options.indexes)) {
+      typesWithIndexes.add(type);
+    }
+
+    // Add types with index files on disk
+    const dataDir = this.#rootPath;
+    try {
+      const entries = await fs.readdir(dataDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith("_")) {
+          const indexDir = path.join(dataDir, entry.name, "_indexes");
+          try {
+            await fs.access(indexDir);
+            typesWithIndexes.add(entry.name);
+          } catch {
+            // No index directory, skip
+          }
+        }
+      }
+    } catch {
+      // Data directory doesn't exist or can't be read
+    }
+
+    // Rebuild indexes for each type
+    for (const type of Array.from(typesWithIndexes).sort()) {
+      const summary = await this.rebuildIndexes(type, {
+        force: options?.force,
+      });
+
+      if (summary.fields.length === 0) {
+        continue;
+      }
+
+      types.push(summary);
+      totalDocs += summary.docsScanned;
+      totalIndexes += summary.fields.length;
+    }
+
+    const durationMs = parseFloat((performance.now() - startTime).toFixed(2));
+
+    return {
+      totalDocs,
+      totalIndexes,
+      types,
+      durationMs,
+    };
   }
 
   /**

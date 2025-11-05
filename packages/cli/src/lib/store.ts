@@ -5,7 +5,15 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { openStore, type QuerySpec, type Document } from "@jsonstore/sdk";
+import {
+  openStore,
+  type QuerySpec,
+  type Document,
+  type RebuildIndexesOptions,
+  type ReindexOptions,
+  type ReindexSummary,
+  type ReindexAllSummary,
+} from "@jsonstore/sdk";
 
 /**
  * CLI Store interface
@@ -58,6 +66,16 @@ export interface CliStore {
    * Get statistics for the store or a type
    */
   stats(type?: string): Promise<{ count: number; bytes: number }>;
+
+  /**
+   * Rebuild indexes for a type
+   */
+  rebuildIndexes(type: string, options?: RebuildIndexesOptions): Promise<ReindexSummary>;
+
+  /**
+   * Reindex all types in the store
+   */
+  reindex(options?: ReindexOptions): Promise<ReindexAllSummary>;
 }
 
 /**
@@ -138,6 +156,14 @@ export function openCliStore(root: string): CliStore {
 
     async stats(type): Promise<{ count: number; bytes: number }> {
       return store.stats(type);
+    },
+
+    async rebuildIndexes(type, options): Promise<ReindexSummary> {
+      return store.rebuildIndexes(type, options);
+    },
+
+    async reindex(options): Promise<ReindexAllSummary> {
+      return store.reindex(options);
     },
   };
 }
