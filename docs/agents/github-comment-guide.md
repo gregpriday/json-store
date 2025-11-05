@@ -1,5 +1,7 @@
 # GitHub Issue Analysis Guide for AI Agents
 
+**Your Role:** You are the **task planner** for this issue. This is the planning/architectural phase—similar to what happens in `/plan` mode or when an agent analyzes before implementing.
+
 **Purpose:** Provide a comprehensive codebase map for the issue, so the implementing agent can start coding immediately without extensive exploration.
 
 **Your Goal:** Read the issue, explore the relevant parts of the codebase, then create a comment that gives the implementing agent a complete picture of:
@@ -7,6 +9,8 @@
 - Where they're located
 - How they work together
 - What patterns to follow
+
+**Think of this as:** The architectural research and planning work that happens before implementation. You're not implementing the feature—you're creating the blueprint that makes implementation straightforward.
 
 ---
 
@@ -441,9 +445,16 @@ reindex.ts → Store.rebuildIndexes() → for each field:
 
 Your comment should be a **complete reference** that lets the implementing agent start coding immediately without exploring the codebase themselves.
 
+**This is the planning phase.** You're doing the architectural research and decision-making work upfront, so the implementing agent can focus purely on execution. Think of it like:
+- **/plan mode** - You're creating the plan
+- **Planning agent** - You're doing the research and architectural analysis
+- **Blueprint creation** - You're designing before the builder builds
+
 Think of it as writing documentation for a new developer joining the project - they need to know:
 - What already exists and where
 - What to build and where
 - How it all connects
 - What patterns to follow
+
+The implementing agent will take your blueprint and execute it, not spend time researching the codebase.
 
