@@ -29,3 +29,21 @@ Primary branches are `main` and `develop`. Follow Conventional Commits (`feat(sd
 
 ## Agent Notes
 Automations should touch `src/`, never generated `dist/`. Use `pnpm --filter` to narrow workspace operations, and update CLI help plus docs whenever introducing new commands or APIs.
+
+## GitHub Issue Implementation Guide
+When working on GitHub issues, use docs/agents/github-comment-guide.md as your reference. This guide helps analyzing agents provide comprehensive codebase maps that enable implementing agents to start coding immediately.
+
+**For analyzing agents (providing implementation guidance):**
+Review the issue, explore relevant existing code, then post a comment following the guide's 4-section structure:
+1. **Relevant Existing Code** - Map similar features with exact locations, signatures, and patterns
+2. **Implementation Map** - Specify what to build, where, with data flow and build order
+3. **Patterns & Edge Cases** - Document patterns from similar features and edge cases to handle
+4. **Files to Modify** - List every file to touch with line count estimates
+
+**For implementing agents (building the feature):**
+Read the analysis comment first - it provides a complete reference of existing functions to use, new functions to create, integration points, and patterns to follow. This eliminates the need for extensive codebase exploration before starting implementation.
+
+**Example invocation:**
+```
+@codex Provide implementation reference per docs/agents/github-comment-guide.md: map existing code, specify what to build with locations/signatures, document data flow, patterns from similar features, and all files to modify.
+```
