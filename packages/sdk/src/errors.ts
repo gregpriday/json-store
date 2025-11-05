@@ -120,12 +120,9 @@ export class MarkdownMissingError extends JSONStoreError {
   constructor(
     public readonly key: string,
     public readonly resolvedPath: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions
   ) {
-    super(
-      `Markdown file not found for field "${key}": ${resolvedPath}`,
-      options,
-    );
+    super(`Markdown file not found for field "${key}": ${resolvedPath}`, options);
   }
 }
 
@@ -139,11 +136,11 @@ export class MarkdownIntegrityError extends JSONStoreError {
     public readonly path: string,
     public readonly expected: string,
     public readonly actual: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions
   ) {
     super(
       `Markdown integrity check failed for ${path}: expected ${expected.slice(0, 8)}..., got ${actual.slice(0, 8)}...`,
-      options,
+      options
     );
   }
 }

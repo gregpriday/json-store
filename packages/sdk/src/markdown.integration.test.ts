@@ -15,7 +15,10 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
 
   beforeEach(async () => {
     // Create unique temp directory for each test
-    testRoot = join(tmpdir(), `jsonstore-md-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testRoot = join(
+      tmpdir(),
+      `jsonstore-md-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
     await mkdir(testRoot, { recursive: true });
 
     store = openStore({
@@ -51,7 +54,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
       const { DirTransaction } = await import("./io.js");
       let commitCalled = false;
       const originalCommit = DirTransaction.prototype.commit;
-      DirTransaction.prototype.commit = async function() {
+      DirTransaction.prototype.commit = async function () {
         commitCalled = true;
         return originalCommit.call(this);
       };
@@ -80,7 +83,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         // Verify no staging directories remain
         const parentDir = join(testRoot, "city");
         const entries = await readdir(parentDir);
-        const txnDirs = entries.filter(e => e.startsWith(".txn."));
+        const txnDirs = entries.filter((e) => e.startsWith(".txn."));
         expect(txnDirs).toEqual([]);
       } finally {
         DirTransaction.prototype.commit = originalCommit;
@@ -210,9 +213,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow("absolute");
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow(
+        "absolute"
+      );
     });
 
     it("should reject parent directory traversal", async () => {
@@ -225,9 +228,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow();
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow();
     });
 
     it("should reject non-.md extensions", async () => {
@@ -240,9 +241,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "test" } })
-      ).rejects.toThrow(".md");
+      await expect(store.put(key, doc, { markdown: { content: "test" } })).rejects.toThrow(".md");
     });
 
     it("should reject Windows-style absolute paths", async () => {
@@ -255,9 +254,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow("absolute");
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow(
+        "absolute"
+      );
     });
 
     it("should normalize and accept Windows-style backslashes in relative paths", async () => {
@@ -287,9 +286,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow();
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow();
     });
 
     it("should validate object-form MarkdownRef paths", async () => {
@@ -304,9 +301,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow();
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow();
     });
 
     it("should reject URL-encoded traversal (%2e%2e)", async () => {
@@ -319,9 +314,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow();
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow();
     });
 
     it("should reject double URL-encoded traversal (%252e%252e)", async () => {
@@ -334,9 +327,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow();
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow();
     });
 
     it("should reject Windows device names (CON, NUL, etc.)", async () => {
@@ -352,9 +343,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
           },
         };
 
-        await expect(
-          store.put(key, doc, { markdown: { content: "test" } })
-        ).rejects.toThrow("reserved device name");
+        await expect(store.put(key, doc, { markdown: { content: "test" } })).rejects.toThrow(
+          "reserved device name"
+        );
       }
     });
 
@@ -368,9 +359,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow("absolute");
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow(
+        "absolute"
+      );
     });
 
     it("should reject alternate data streams", async () => {
@@ -383,9 +374,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow("illegal characters");
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow(
+        "illegal characters"
+      );
     });
 
     it("should reject null bytes in paths", async () => {
@@ -398,9 +389,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         },
       };
 
-      await expect(
-        store.put(key, doc, { markdown: { content: "hack" } })
-      ).rejects.toThrow("illegal characters");
+      await expect(store.put(key, doc, { markdown: { content: "hack" } })).rejects.toThrow(
+        "illegal characters"
+      );
     });
   });
 
@@ -485,9 +476,9 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
       await symlink(externalFile, mdPath);
 
       // Writing should reject the symlink
-      await expect(
-        store.writeMarkdown(key, "content", "Attempted overwrite")
-      ).rejects.toThrow("symlink");
+      await expect(store.writeMarkdown(key, "content", "Attempted overwrite")).rejects.toThrow(
+        "symlink"
+      );
 
       // Cleanup
       await unlink(externalFile);
@@ -495,7 +486,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
 
     it("should reject hardlinked markdown files (nlink > 1)", async () => {
       const key: Key = { type: "hardlink-test", id: "test" };
-      const doc = {
+      const _doc = {
         type: "hardlink-test",
         id: "test",
         md: {
@@ -692,7 +683,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
       let callCount = 0;
 
       // Mock commit to fail on first call
-      DirTransaction.prototype.commit = async function() {
+      DirTransaction.prototype.commit = async function () {
         callCount++;
         if (callCount === 1) {
           // Restore original and throw
@@ -726,7 +717,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         // Verify no staging or backup directories left behind
         const parentDir = join(testRoot, "atomic");
         const entries = await readdir(parentDir).catch(() => []);
-        const txnDirs = entries.filter(e => e.startsWith(".txn.") || e.startsWith("test.bak."));
+        const txnDirs = entries.filter((e) => e.startsWith(".txn.") || e.startsWith("test.bak."));
         expect(txnDirs).toEqual([]);
       } finally {
         // Restore original method
@@ -764,7 +755,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
       const originalCommit = DirTransaction.prototype.commit;
       let callCount = 0;
 
-      DirTransaction.prototype.commit = async function() {
+      DirTransaction.prototype.commit = async function () {
         callCount++;
         if (callCount === 1) {
           DirTransaction.prototype.commit = originalCommit;
@@ -790,9 +781,7 @@ describe("Markdown Sidecars - Layout 1 (subfolder-per-object)", () => {
         // Verify no backup or staging dirs
         const parentDir = join(testRoot, "atomic");
         const entries = await readdir(parentDir);
-        const transientDirs = entries.filter(e =>
-          e.startsWith(".txn.") || e.includes(".bak.")
-        );
+        const transientDirs = entries.filter((e) => e.startsWith(".txn.") || e.includes(".bak."));
         expect(transientDirs).toEqual([]);
       } finally {
         DirTransaction.prototype.commit = originalCommit;

@@ -301,9 +301,7 @@ export class DirTransaction {
   async copyTree(sourceDir: string, targetRelPath: string = ""): Promise<void> {
     this.#checkNotFinalized();
 
-    const targetDir = targetRelPath
-      ? join(this.#stagingDir, targetRelPath)
-      : this.#stagingDir;
+    const targetDir = targetRelPath ? join(this.#stagingDir, targetRelPath) : this.#stagingDir;
 
     await ensureDirectory(targetDir);
 
@@ -315,9 +313,7 @@ export class DirTransaction {
 
       if (entry.isDirectory()) {
         // Recursively copy directories
-        const relSubPath = targetRelPath
-          ? join(targetRelPath, entry.name)
-          : entry.name;
+        const relSubPath = targetRelPath ? join(targetRelPath, entry.name) : entry.name;
         await this.copyTree(srcPath, relSubPath);
       } else if (entry.isFile()) {
         // Copy files

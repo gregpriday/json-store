@@ -9,10 +9,7 @@ import { createHash } from "node:crypto";
 import { readFile, lstat } from "node:fs/promises";
 import { join, relative, posix } from "node:path";
 import type { MarkdownRef } from "./types.js";
-import {
-  MarkdownPathError,
-  MarkdownIntegrityError,
-} from "./errors.js";
+import { MarkdownPathError, MarkdownIntegrityError } from "./errors.js";
 
 /**
  * Path policy for markdown file validation
@@ -80,10 +77,7 @@ function multiDecode(s: string, maxIterations = 2): string {
  * @returns Normalized relative path
  * @throws {MarkdownPathError} if path violates policy
  */
-export function normalizeAndValidateRelPath(
-  relPath: string,
-  _policy: PathPolicy,
-): string {
+export function normalizeAndValidateRelPath(relPath: string, _policy: PathPolicy): string {
   // Must be a string
   if (typeof relPath !== "string" || relPath.trim().length === 0) {
     throw new MarkdownPathError(relPath, "path must be a non-empty string");
@@ -122,10 +116,7 @@ export function normalizeAndValidateRelPath(
   for (const segment of segments) {
     // Check for traversal attempts (.. or .)
     if (segment === ".." || segment === ".") {
-      throw new MarkdownPathError(
-        posixPath,
-        "path must not contain '..' or '.' segments",
-      );
+      throw new MarkdownPathError(posixPath, "path must not contain '..' or '.' segments");
     }
 
     // Windows: block device names and handle trailing dots/spaces
@@ -159,7 +150,7 @@ export function normalizeAndValidateRelPath(
 export function resolveMdPath(
   docDir: string,
   ref: MarkdownRef,
-  policy: PathPolicy,
+  policy: PathPolicy
 ): ResolvedMarkdownPath {
   // Extract path from ref
   const relPath = typeof ref === "string" ? ref : ref.path;
@@ -181,10 +172,7 @@ export function resolveMdPath(
   }
 
   if (!withinAllowedRoot) {
-    throw new MarkdownPathError(
-      normalized,
-      `resolved path ${absPath} is outside allowed roots`,
-    );
+    throw new MarkdownPathError(normalized, `resolved path ${absPath} is outside allowed roots`);
   }
 
   return {
@@ -200,10 +188,7 @@ export function resolveMdPath(
  * @param policy - Path validation policy
  * @throws {MarkdownPathError} if path or any parent is a symlink/hardlink and not allowed
  */
-export async function checkSymlink(
-  absPath: string,
-  policy: PathPolicy,
-): Promise<void> {
+export async function checkSymlink(absPath: string, policy: PathPolicy): Promise<void> {
   if (policy.allowSymlinks) {
     return;
   }
@@ -212,7 +197,7 @@ export async function checkSymlink(
   // This prevents escapes through symlinked directories
   // Use platform-appropriate separator (fixes Windows/UNC path handling)
   const { sep } = await import("node:path");
-  const pathParts = absPath.split(sep).filter(p => p.length > 0);
+  const pathParts = absPath.split(sep).filter((p) => p.length > 0);
 
   // Handle absolute paths correctly per platform
   let currentPath = absPath.startsWith(sep) ? sep : "";
@@ -283,10 +268,7 @@ export async function computeSha256(absPath: string): Promise<string> {
  * @param expectedSha - Expected SHA-256 hash (hex-encoded)
  * @throws {MarkdownIntegrityError} if hash doesn't match
  */
-export async function verifyIntegrity(
-  absPath: string,
-  expectedSha: string,
-): Promise<void> {
+export async function verifyIntegrity(absPath: string, expectedSha: string): Promise<void> {
   const actualSha = await computeSha256(absPath);
   if (actualSha !== expectedSha) {
     throw new MarkdownIntegrityError(absPath, expectedSha, actualSha);
@@ -318,17 +300,11 @@ export function renderCachePathForKey(docDir: string, key: string): string {
 export function validateCachePath(cachePath: string, docDir: string): void {
   // Must start with .cache/
   if (!cachePath.startsWith(".cache/")) {
-    throw new MarkdownPathError(
-      cachePath,
-      "cache path must be under .cache/ directory",
-    );
+    throw new MarkdownPathError(cachePath, "cache path must be under .cache/ directory");
   }
 
   // Normalize and check for traversal
-  normalizeAndValidateRelPath(
-    cachePath.replace(/\.html$/, ".md"),
-    { allowedRoots: [docDir] },
-  );
+  normalizeAndValidateRelPath(cachePath.replace(/\.html$/, ".md"), { allowedRoots: [docDir] });
 
   // Verify it's actually under .cache/
   const absPath = join(docDir, cachePath);
@@ -336,9 +312,6 @@ export function validateCachePath(cachePath: string, docDir: string): void {
   const rel = relative(cacheDir, absPath);
 
   if (rel.startsWith("..")) {
-    throw new MarkdownPathError(
-      cachePath,
-      "cache path escapes .cache/ directory",
-    );
+    throw new MarkdownPathError(cachePath, "cache path escapes .cache/ directory");
   }
 }

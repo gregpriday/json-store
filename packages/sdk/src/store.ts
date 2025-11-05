@@ -25,19 +25,26 @@ import type {
 } from "./types.js";
 import { DocumentCache } from "./cache.js";
 import { validateDocument, validateName, validateKey, validateTypeName } from "./validation.js";
-import { listFiles, atomicWrite, readDocument, removeDocument, DirTransaction } from "./io.js";
+import {
+  listFiles,
+  atomicWrite,
+  readDocument,
+  removeDocument,
+  DirTransaction,
+  ensureDirectory,
+} from "./io.js";
 import { evaluateQuery, matches, project, getPath } from "./query.js";
 import { stableStringify } from "./format.js";
 import { IndexManager } from "./indexes.js";
 import { canonicalize, safeParseJson } from "./format/canonical.js";
-import { DocumentReadError, FormatError, DocumentNotFoundError, MarkdownMissingError } from "./errors.js";
-import type { MarkdownMap } from "./types.js";
 import {
-  resolveMdPath,
-  checkSymlink,
-  verifyIntegrity,
-  type PathPolicy,
-} from "./markdown.js";
+  DocumentReadError,
+  FormatError,
+  DocumentNotFoundError,
+  MarkdownMissingError,
+} from "./errors.js";
+import type { MarkdownMap } from "./types.js";
+import { resolveMdPath, checkSymlink, verifyIntegrity, type PathPolicy } from "./markdown.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -160,9 +167,24 @@ class JSONStore implements Store {
     const markdownEnabled = this.#options.markdownSidecars?.enabled === true;
     const hasMdField = doc.md !== undefined;
 
-    // If markdown content is provided with sidecars enabled, use transaction-based write
-    if (markdownEnabled && hasMarkdown && hasMdField) {
-      await this.writeMarkdownWithTransaction(key, doc, opts.markdown!);
+    // Check if document exists in Layout 1 format (subfolder)
+    let existsInLayout1 = false;
+    if (markdownEnabled && hasMdField) {
+      const layout1Path = path.join(this.getDocumentDir(key), `${key.id}.json`);
+      try {
+        await fs.access(layout1Path);
+        existsInLayout1 = true;
+      } catch {
+        // Layout 1 file doesn't exist
+      }
+    }
+
+    // Use transaction-based write if:
+    // 1. Markdown sidecars are enabled AND document has md field AND
+    // 2. Either markdown content is provided OR document already exists in Layout 1
+    // This ensures Layout 1 documents get JSON updates even when markdown is omitted
+    if (markdownEnabled && hasMdField && (hasMarkdown || existsInLayout1)) {
+      await this.writeMarkdownWithTransaction(key, doc, opts?.markdown || {});
 
       // Update indexes (if enabled)
       if (this.#options.enableIndexes) {
@@ -1402,7 +1424,7 @@ class JSONStore implements Store {
     if (!mdMap || !(fieldKey in mdMap)) {
       throw new MarkdownMissingError(
         fieldKey,
-        `Field "${fieldKey}" is not referenced in document md map`,
+        `Field "${fieldKey}" is not referenced in document md map`
       );
     }
 
@@ -1414,6 +1436,14 @@ class JSONStore implements Store {
     const { absPath } = resolveMdPath(docDir, ref, policy);
 
     // Check for symlinks before writing
+    await checkSymlink(absPath, policy);
+
+    // Ensure parent directory exists
+    const parentDir = path.dirname(absPath);
+    await ensureDirectory(parentDir);
+
+    // Re-check for symlinks immediately before write to close TOCTOU window
+    // This catches any symlink swaps that happened after the initial check
     await checkSymlink(absPath, policy);
 
     // Write content atomically
@@ -1551,11 +1581,7 @@ class JSONStore implements Store {
    * @throws {MarkdownMissingError} if file doesn't exist
    * @throws {MarkdownIntegrityError} if integrity check fails
    */
-  private async readMarkdownField(
-    key: Key,
-    doc: Document,
-    fieldKey: string,
-  ): Promise<string> {
+  private async readMarkdownField(key: Key, doc: Document, fieldKey: string): Promise<string> {
     const mdMap = doc.md as MarkdownMap | undefined;
     if (!mdMap || !(fieldKey in mdMap)) {
       throw new MarkdownMissingError(fieldKey, "not referenced in document");
@@ -1596,10 +1622,7 @@ class JSONStore implements Store {
    * @param doc - Document containing markdown references
    * @returns Map of field names to markdown content
    */
-  private async readMarkdownFields(
-    key: Key,
-    doc: Document,
-  ): Promise<Record<string, string>> {
+  private async readMarkdownFields(key: Key, doc: Document): Promise<Record<string, string>> {
     const mdMap = doc.md as MarkdownMap | undefined;
     if (!mdMap) {
       return {};
@@ -1621,7 +1644,7 @@ class JSONStore implements Store {
   private async writeMarkdownWithTransaction(
     key: Key,
     doc: Document,
-    markdown: Record<string, string | Buffer>,
+    markdown: Record<string, string | Buffer>
   ): Promise<void> {
     const docDir = this.getDocumentDir(key);
     const policy = this.getMarkdownPathPolicy();
@@ -1663,7 +1686,7 @@ class JSONStore implements Store {
         // Re-validate all markdown paths immediately before commit
         // This catches any symlink/hardlink swaps that happened after initial validation
         if (mdMap) {
-          for (const [fieldKey, ref] of Object.entries(mdMap)) {
+          for (const [_fieldKey, ref] of Object.entries(mdMap)) {
             const { absPath } = resolveMdPath(docDir, ref, policy);
             await checkSymlink(absPath, policy);
           }
@@ -1681,10 +1704,7 @@ class JSONStore implements Store {
         for (const [fieldKey] of Object.entries(mdMap)) {
           const mdContent = markdown[fieldKey] ?? preservedMarkdown.get(fieldKey);
           if (mdContent === undefined) {
-            throw new MarkdownMissingError(
-              fieldKey,
-              resolvedPaths.get(fieldKey) || ""
-            );
+            throw new MarkdownMissingError(fieldKey, resolvedPaths.get(fieldKey) || "");
           }
           await txn.writeFile(resolvedPaths.get(fieldKey)!, mdContent);
         }
