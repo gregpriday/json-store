@@ -99,3 +99,48 @@ export class FormatError extends JSONStoreError {
     super(`Failed to format document: ${filePath}`, options);
   }
 }
+
+/**
+ * Thrown when a markdown file path is invalid
+ */
+export class MarkdownPathError extends JSONStoreError {
+  readonly code = "E_MD_PATH";
+
+  constructor(path: string, reason: string, options?: ErrorOptions) {
+    super(`Invalid markdown path "${path}": ${reason}`, options);
+  }
+}
+
+/**
+ * Thrown when a referenced markdown file does not exist
+ */
+export class MarkdownMissingError extends JSONStoreError {
+  readonly code = "E_MD_MISSING";
+
+  constructor(
+    public readonly key: string,
+    public readonly resolvedPath: string,
+    options?: ErrorOptions
+  ) {
+    super(`Markdown file not found for field "${key}": ${resolvedPath}`, options);
+  }
+}
+
+/**
+ * Thrown when markdown file integrity check fails
+ */
+export class MarkdownIntegrityError extends JSONStoreError {
+  readonly code = "E_MD_SHA";
+
+  constructor(
+    public readonly path: string,
+    public readonly expected: string,
+    public readonly actual: string,
+    options?: ErrorOptions
+  ) {
+    super(
+      `Markdown integrity check failed for ${path}: expected ${expected.slice(0, 8)}..., got ${actual.slice(0, 8)}...`,
+      options
+    );
+  }
+}

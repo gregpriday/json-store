@@ -15,6 +15,7 @@ import type {
   Document,
   QuerySpec,
   WriteOptions,
+  GetOptions,
   RemoveOptions,
   StoreStats,
   DetailedStats,
@@ -39,18 +40,31 @@ import {
   validateTypeName,
   validateWithSchema,
 } from "./validation.js";
-import { listFiles, atomicWrite, readDocument, removeDocument } from "./io.js";
+import {
+  listFiles,
+  atomicWrite,
+  readDocument,
+  removeDocument,
+  DirTransaction,
+  ensureDirectory,
+} from "./io.js";
 import { evaluateQuery, matches, project, getPath } from "./query.js";
 import { stableStringify } from "./format.js";
 import { IndexManager } from "./indexes.js";
 import { canonicalize, safeParseJson } from "./format/canonical.js";
-import { DocumentReadError, FormatError, DocumentNotFoundError } from "./errors.js";
+import {
+  DocumentReadError,
+  FormatError,
+  DocumentNotFoundError,
+  MarkdownMissingError,
+} from "./errors.js";
 import { HierarchyManager } from "./hierarchy/hierarchy-manager.js";
 import { validateMaterializedPath, validatePathDepth } from "./validation.js";
 import { createSchemaRegistry } from "./schema/registry.js";
 import { createSchemaValidator } from "./schema/validator.js";
 import { generateSlug, generateUniqueSlug } from "./slug.js";
-import type { SlugOptions } from "./types.js";
+import type { SlugOptions, MarkdownMap } from "./types.js";
+import { resolveMdPath, checkSymlink, verifyIntegrity, type PathPolicy } from "./markdown.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -120,6 +134,7 @@ class JSONStore implements Store {
       defaultSchemas: options.defaultSchemas ?? {},
       experimental: options.experimental ?? {},
       slugConfig: options.slugConfig ?? {},
+      markdownSidecars: options.markdownSidecars ?? { enabled: false },
     };
 
     // Initialize cache with default settings
@@ -298,6 +313,54 @@ class JSONStore implements Store {
       }
     }
 
+    // Check if markdown sidecars are enabled and provided
+    const hasMarkdown = opts?.markdown && Object.keys(opts.markdown).length > 0;
+    const markdownEnabled = this.#options.markdownSidecars?.enabled === true;
+    const hasMdField = doc.md !== undefined;
+
+    // Check if document exists in Layout 1 format (subfolder)
+    let existsInLayout1 = false;
+    if (markdownEnabled && hasMdField) {
+      const layout1Path = path.join(this.getDocumentDir(key), `${key.id}.json`);
+      try {
+        await fs.access(layout1Path);
+        existsInLayout1 = true;
+      } catch {
+        // Layout 1 file doesn't exist
+      }
+    }
+
+    // Use transaction-based write if:
+    // 1. Markdown sidecars are enabled AND document has md field AND
+    // 2. Either markdown content is provided OR document already exists in Layout 1
+    // This ensures Layout 1 documents get JSON updates even when markdown is omitted
+    if (markdownEnabled && hasMdField && (hasMarkdown || existsInLayout1)) {
+      await this.writeMarkdownWithTransaction(key, doc, opts?.markdown || {});
+
+      // Update indexes (if enabled)
+      if (this.#options.enableIndexes) {
+        const fields = this.#getIndexedFields(key.type);
+        for (const field of fields) {
+          const oldValue = oldDoc ? getPath(oldDoc, field) : undefined;
+          const newValue = getPath(doc, field);
+          await this.#indexManager.updateIndex(key.type, field, key.id, oldValue, newValue);
+        }
+      }
+
+      // Optional git commit (non-blocking, logs errors)
+      if (opts?.gitCommit) {
+        const filePath = this.getFilePath(key);
+        try {
+          await this.gitCommit(filePath, opts.gitCommit);
+        } catch (err: any) {
+          console.error("Git commit failed:", err.message);
+        }
+      }
+
+      return;
+    }
+
+    // Standard write path (no markdown sidecars)
     // Canonicalize document with stable formatting
     const content = stableStringify(
       processedDoc,
@@ -389,7 +452,8 @@ class JSONStore implements Store {
    * Implements TOCTOU (Time-of-check to time-of-use) guard by re-checking file stats after read.
    *
    * @param key - Document identifier (type and id)
-   * @returns Document if found, null if not found
+   * @param opts - Optional get options (include markdown, etc.)
+   * @returns Document if found, null if not found. If includeMarkdown is true, adds _markdown field with content
    * @throws {ValidationError} If key is invalid
    * @throws {DocumentReadError} If read operation fails (excluding ENOENT)
    *
@@ -399,11 +463,28 @@ class JSONStore implements Store {
    * if (doc) {
    *   console.log(doc.title);
    * }
+   *
+   * // With markdown
+   * const docWithMd = await store.get({ type: 'city', id: 'new-york' }, { includeMarkdown: true });
+   * console.log(docWithMd._markdown.summary);
    * ```
    */
-  async get(key: Key): Promise<Document | null> {
+  async get(key: Key, opts?: GetOptions): Promise<Document | null> {
     validateKey(key);
-    const filePath = this.getFilePath(key);
+
+    // For Layout 1 (markdown sidecars), files are in subdirectories
+    // Check subdirectory first if markdown sidecars are enabled
+    let filePath = this.getFilePath(key);
+    if (this.#options.markdownSidecars?.enabled) {
+      const layout1Path = path.join(this.getDocumentDir(key), `${key.id}.json`);
+      // Check if layout 1 file exists
+      try {
+        await fs.access(layout1Path);
+        filePath = layout1Path;
+      } catch {
+        // Fall back to flat path
+      }
+    }
 
     // Retry up to 3 times if file changes during read (TOCTOU guard)
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -421,6 +502,11 @@ class JSONStore implements Store {
       // Try cache first (with metadata validation)
       const cached = this.#cache.get(filePath, st1);
       if (cached) {
+        // If markdown is requested and document has md field, load it
+        if (opts?.includeMarkdown && cached.md) {
+          const markdown = await this.readMarkdownFields(key, cached);
+          return { ...cached, _markdown: markdown };
+        }
         return cached;
       }
 
@@ -462,6 +548,12 @@ class JSONStore implements Store {
       if (st2 && st2.mtimeMs === st1.mtimeMs && st2.size === st1.size) {
         // Stats match - safe to cache and return
         this.#cache.set(filePath, doc, st2);
+
+        // If markdown is requested and document has md field, load it
+        if (opts?.includeMarkdown && doc.md) {
+          const markdown = await this.readMarkdownFields(key, doc);
+          return { ...doc, _markdown: markdown };
+        }
         return doc;
       }
 
@@ -469,6 +561,11 @@ class JSONStore implements Store {
       // Retry unless this was the last attempt
       if (attempt === 2) {
         // Last attempt - return without caching
+        // If markdown is requested and document has md field, load it
+        if (opts?.includeMarkdown && doc.md) {
+          const markdown = await this.readMarkdownFields(key, doc);
+          return { ...doc, _markdown: markdown };
+        }
         return doc;
       }
     }
@@ -1596,6 +1693,7 @@ class JSONStore implements Store {
   }
 
   /**
+<<<<<<< HEAD
    * Store or update a document with hierarchical relationships
    */
   async putHierarchical(
@@ -1755,6 +1853,89 @@ class JSONStore implements Store {
     };
   }
 
+  /**
+   * Read markdown content for a specific field
+   *
+   * @param key - Document key (type and id)
+   * @param fieldKey - Field name in the md map
+   * @returns Markdown content as string
+   * @throws {MarkdownMissingError} if file doesn't exist or isn't referenced
+   * @throws {MarkdownIntegrityError} if integrity check fails
+   *
+   * @example
+   * ```typescript
+   * const summary = await store.readMarkdown({ type: 'city', id: 'new-york' }, 'summary');
+   * console.log(summary);
+   * ```
+   */
+  async readMarkdown(key: Key, fieldKey: string): Promise<string> {
+    // Get the document to access markdown references
+    const doc = await this.get(key);
+    if (!doc) {
+      throw new DocumentNotFoundError(this.getFilePath(key));
+    }
+
+    return this.readMarkdownField(key, doc, fieldKey);
+  }
+
+  /**
+   * Write markdown content for a specific field
+   *
+   * Updates a single markdown file without modifying the JSON document.
+   * The document must already have a markdown reference for this field.
+   *
+   * @param key - Document key (type and id)
+   * @param fieldKey - Field name in the md map
+   * @param content - Markdown content to write
+   * @throws {MarkdownMissingError} if field is not referenced in document
+   *
+   * @example
+   * ```typescript
+   * await store.writeMarkdown(
+   *   { type: 'city', id: 'new-york' },
+   *   'summary',
+   *   '# New York City\n\nThe city that never sleeps.'
+   * );
+   * ```
+   */
+  async writeMarkdown(key: Key, fieldKey: string, content: string | Buffer): Promise<void> {
+    // Get the document to access markdown references
+    const doc = await this.get(key);
+    if (!doc) {
+      throw new DocumentNotFoundError(this.getFilePath(key));
+    }
+
+    const mdMap = doc.md as MarkdownMap | undefined;
+    if (!mdMap || !(fieldKey in mdMap)) {
+      throw new MarkdownMissingError(
+        fieldKey,
+        `Field "${fieldKey}" is not referenced in document md map`
+      );
+    }
+
+    const ref = mdMap[fieldKey];
+    const docDir = this.getDocumentDir(key);
+    const policy = this.getMarkdownPathPolicy();
+
+    // Resolve and validate path
+    const { absPath } = resolveMdPath(docDir, ref, policy);
+
+    // Check for symlinks before writing
+    await checkSymlink(absPath, policy);
+
+    // Ensure parent directory exists
+    const parentDir = path.dirname(absPath);
+    await ensureDirectory(parentDir);
+
+    // Re-check for symlinks immediately before write to close TOCTOU window
+    // This catches any symlink swaps that happened after the initial check
+    await checkSymlink(absPath, policy);
+
+    // Write content atomically
+    const contentStr = Buffer.isBuffer(content) ? content.toString("utf-8") : content;
+    await atomicWrite(absPath, contentStr);
+  }
+
   async close(): Promise<void> {
     // Cleanup resources (file watchers, cache, etc.)
     this.#cache.clear();
@@ -1852,6 +2033,178 @@ class JSONStore implements Store {
       } catch {
         // Ignore reset errors
       }
+      throw err;
+    }
+  }
+
+  /**
+   * Get the directory path for a document (Layout 1: subfolder-per-object)
+   * @param key - Document key
+   * @returns Absolute path to document directory
+   */
+  private getDocumentDir(key: Key): string {
+    return path.join(this.#rootPath, key.type, key.id);
+  }
+
+  /**
+   * Create path policy for markdown validation
+   * @returns PathPolicy with allowed roots
+   */
+  private getMarkdownPathPolicy(): PathPolicy {
+    return {
+      allowedRoots: [this.#rootPath],
+      allowSymlinks: false,
+    };
+  }
+
+  /**
+   * Read markdown content for a document field
+   * @param key - Document key
+   * @param doc - Document containing markdown references
+   * @param fieldKey - Field name in the md map
+   * @returns Markdown content as string
+   * @throws {MarkdownMissingError} if file doesn't exist
+   * @throws {MarkdownIntegrityError} if integrity check fails
+   */
+  private async readMarkdownField(key: Key, doc: Document, fieldKey: string): Promise<string> {
+    const mdMap = doc.md as MarkdownMap | undefined;
+    if (!mdMap || !(fieldKey in mdMap)) {
+      throw new MarkdownMissingError(fieldKey, "not referenced in document");
+    }
+
+    const ref = mdMap[fieldKey];
+    const docDir = this.getDocumentDir(key);
+    const policy = this.getMarkdownPathPolicy();
+
+    // Resolve path
+    const { absPath } = resolveMdPath(docDir, ref, policy);
+
+    // Check for symlinks
+    await checkSymlink(absPath, policy);
+
+    // Read content
+    let content: string;
+    try {
+      content = await fs.readFile(absPath, "utf-8");
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        throw new MarkdownMissingError(fieldKey, absPath, { cause: err });
+      }
+      throw new DocumentReadError(absPath, { cause: err });
+    }
+
+    // Verify integrity if sha256 is present
+    if (typeof ref === "object" && ref.sha256) {
+      await verifyIntegrity(absPath, ref.sha256);
+    }
+
+    return content;
+  }
+
+  /**
+   * Read all markdown fields for a document
+   * @param key - Document key
+   * @param doc - Document containing markdown references
+   * @returns Map of field names to markdown content
+   */
+  private async readMarkdownFields(key: Key, doc: Document): Promise<Record<string, string>> {
+    const mdMap = doc.md as MarkdownMap | undefined;
+    if (!mdMap) {
+      return {};
+    }
+
+    const result: Record<string, string> = {};
+    for (const fieldKey of Object.keys(mdMap)) {
+      result[fieldKey] = await this.readMarkdownField(key, doc, fieldKey);
+    }
+    return result;
+  }
+
+  /**
+   * Write markdown files using a directory transaction (Layout 1)
+   * @param key - Document key
+   * @param doc - Document with markdown references
+   * @param markdown - Map of field names to markdown content
+   */
+  private async writeMarkdownWithTransaction(
+    key: Key,
+    doc: Document,
+    markdown: Record<string, string | Buffer>
+  ): Promise<void> {
+    const docDir = this.getDocumentDir(key);
+    const policy = this.getMarkdownPathPolicy();
+
+    // Validate all markdown paths and preserve untouched fields
+    const mdMap = doc.md as MarkdownMap | undefined;
+    const preservedMarkdown = new Map<string, string>();
+    const resolvedPaths = new Map<string, string>();
+
+    if (mdMap) {
+      for (const [fieldKey, ref] of Object.entries(mdMap)) {
+        // Validate and resolve path
+        const { relPath, absPath } = resolveMdPath(docDir, ref, policy);
+        resolvedPaths.set(fieldKey, relPath);
+
+        // Check for symlinks in target path (before transaction)
+        // This prevents writing through symlinked directories
+        await checkSymlink(absPath, policy);
+
+        // If markdown not provided, read existing content to preserve it
+        if (markdown[fieldKey] === undefined) {
+          try {
+            const existingContent = await this.readMarkdownField(key, doc, fieldKey);
+            preservedMarkdown.set(fieldKey, existingContent);
+          } catch (err) {
+            // If file doesn't exist yet, that's okay for new documents
+            // But rethrow other errors
+            if (!(err instanceof MarkdownMissingError)) {
+              throw err;
+            }
+          }
+        }
+      }
+    }
+
+    // Create transaction with pre-commit validation to reduce TOCTOU window
+    const txn = new DirTransaction(docDir, {
+      preCommitValidation: async () => {
+        // Re-validate all markdown paths immediately before commit
+        // This catches any symlink/hardlink swaps that happened after initial validation
+        if (mdMap) {
+          for (const [_fieldKey, ref] of Object.entries(mdMap)) {
+            const { absPath } = resolveMdPath(docDir, ref, policy);
+            await checkSymlink(absPath, policy);
+          }
+        }
+      },
+    });
+
+    try {
+      // Write JSON file
+      const content = stableStringify(doc, this.#options.indent, this.#options.stableKeyOrder);
+      await txn.writeFile(`${key.id}.json`, content);
+
+      // Write markdown files based on references in doc.md
+      if (mdMap) {
+        for (const [fieldKey] of Object.entries(mdMap)) {
+          const mdContent = markdown[fieldKey] ?? preservedMarkdown.get(fieldKey);
+          if (mdContent === undefined) {
+            throw new MarkdownMissingError(fieldKey, resolvedPaths.get(fieldKey) || "");
+          }
+          await txn.writeFile(resolvedPaths.get(fieldKey)!, mdContent);
+        }
+      }
+
+      // Commit transaction (runs pre-commit validation)
+      await txn.commit();
+
+      // Invalidate cache for both flat and layout 1 paths
+      const flatFilePath = this.getFilePath(key);
+      this.#cache.delete(flatFilePath);
+      const layout1FilePath = path.join(docDir, `${key.id}.json`);
+      this.#cache.delete(layout1FilePath);
+    } catch (err) {
+      await txn.abort();
       throw err;
     }
   }

@@ -218,3 +218,229 @@ export async function listFiles(dirPath: string, extension?: string): Promise<st
     throw new ListFilesError(dirPath, { cause: err });
   }
 }
+
+/**
+ * Transaction for atomic multi-file writes (Layout 1: subfolder-per-object)
+ *
+ * Provides atomic directory-level operations by staging changes in a temporary
+ * directory and committing them with a single atomic rename.
+ *
+ * Pattern:
+ * 1. Create staging directory adjacent to target
+ * 2. Write all files to staging directory
+ * 3. Commit: atomic rename of staging → target
+ * 4. Abort: remove staging directory
+ *
+ * Invariants:
+ * - All writes go to staging directory first
+ * - Commit is atomic (single directory rename)
+ * - Abort is idempotent and safe to call multiple times
+ * - Staging directory is always on same filesystem as target
+ */
+export class DirTransaction {
+  #rootDir: string;
+  #stagingDir: string;
+  #committed = false;
+  #aborted = false;
+  #preCommitValidation?: () => Promise<void>;
+
+  /**
+   * Create a new directory transaction
+   * @param rootDir - Target root directory for the transaction
+   * @param options - Optional configuration
+   */
+  constructor(rootDir: string, options?: { preCommitValidation?: () => Promise<void> }) {
+    this.#rootDir = rootDir;
+    this.#stagingDir = join(dirname(rootDir), `.txn.${randomUUID()}`);
+    this.#preCommitValidation = options?.preCommitValidation;
+  }
+
+  /**
+   * Get the staging directory path (for internal use)
+   */
+  get stagingPath(): string {
+    return this.#stagingDir;
+  }
+
+  /**
+   * Get the target directory path
+   */
+  get targetPath(): string {
+    return this.#rootDir;
+  }
+
+  /**
+   * Write a JSON file to the staging directory
+   * @param relPath - Relative path within the directory
+   * @param data - Data to serialize as JSON
+   */
+  async writeJson(relPath: string, data: unknown): Promise<void> {
+    this.#checkNotFinalized();
+    const targetPath = join(this.#stagingDir, relPath);
+    const content = JSON.stringify(data, null, 2) + "\n";
+    await atomicWrite(targetPath, content);
+  }
+
+  /**
+   * Write a file to the staging directory
+   * @param relPath - Relative path within the directory
+   * @param content - Content to write (string or Buffer)
+   */
+  async writeFile(relPath: string, content: string | Buffer): Promise<void> {
+    this.#checkNotFinalized();
+    const targetPath = join(this.#stagingDir, relPath);
+    const contentStr = Buffer.isBuffer(content) ? content.toString("utf-8") : content;
+    await atomicWrite(targetPath, contentStr);
+  }
+
+  /**
+   * Copy an entire directory tree into the staging directory
+   * @param sourceDir - Source directory to copy from
+   * @param targetRelPath - Relative path within staging directory for the copy
+   */
+  async copyTree(sourceDir: string, targetRelPath: string = ""): Promise<void> {
+    this.#checkNotFinalized();
+
+    const targetDir = targetRelPath ? join(this.#stagingDir, targetRelPath) : this.#stagingDir;
+
+    await ensureDirectory(targetDir);
+
+    const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const srcPath = join(sourceDir, entry.name);
+      const destPath = join(targetDir, entry.name);
+
+      if (entry.isDirectory()) {
+        // Recursively copy directories
+        const relSubPath = targetRelPath ? join(targetRelPath, entry.name) : entry.name;
+        await this.copyTree(srcPath, relSubPath);
+      } else if (entry.isFile()) {
+        // Copy files
+        const content = await fs.readFile(srcPath, "utf-8");
+        await atomicWrite(destPath, content);
+      }
+      // Skip symlinks and other special files
+    }
+  }
+
+  /**
+   * Commit the transaction by atomically renaming staging directory to target
+   *
+   * If target directory exists, it will be replaced atomically (last-writer-wins).
+   * On POSIX systems, this is atomic. On Windows, we attempt best-effort atomicity.
+   */
+  async commit(): Promise<void> {
+    this.#checkNotFinalized();
+
+    try {
+      // Run pre-commit validation if provided (e.g., re-check symlinks)
+      // This reduces TOCTOU window for security checks
+      if (this.#preCommitValidation) {
+        await this.#preCommitValidation();
+      }
+
+      // Check if target exists
+      let targetExists = false;
+      try {
+        await fs.access(this.#rootDir);
+        targetExists = true;
+      } catch (err: any) {
+        if (err.code !== "ENOENT") {
+          throw err;
+        }
+      }
+
+      if (targetExists) {
+        // Target exists - need to replace it atomically
+        // On both POSIX and Windows, we need to move old out of the way first
+        // because rename() won't replace a non-empty directory
+        const backup = `${this.#rootDir}.bak.${randomUUID()}`;
+        await fs.rename(this.#rootDir, backup);
+        try {
+          await fs.rename(this.#stagingDir, this.#rootDir);
+
+          // Success - mark as committed before cleanup
+          this.#committed = true;
+
+          // Best-effort backup removal (don't fail if this fails)
+          try {
+            await fs.rm(backup, { recursive: true, force: true });
+          } catch (cleanupErr: any) {
+            // Log but don't throw - the commit succeeded
+            if (process.env.JSONSTORE_DEBUG) {
+              console.warn(`Backup cleanup failed for ${backup}:`, cleanupErr.message);
+            }
+          }
+        } catch (err) {
+          // Failed to move staging - restore backup
+          try {
+            await fs.rename(backup, this.#rootDir);
+          } catch {
+            // Restore failed - target may be in inconsistent state
+          }
+          throw err;
+        }
+      } else {
+        // Target doesn't exist - simple rename
+        await fs.rename(this.#stagingDir, this.#rootDir);
+        this.#committed = true;
+      }
+
+      // Fsync parent directory for durability
+      if (ENABLE_DIR_FSYNC) {
+        const parentDir = dirname(this.#rootDir);
+        try {
+          const dirHandle = await fs.open(parentDir, "r");
+          try {
+            await dirHandle.sync();
+          } finally {
+            await dirHandle.close();
+          }
+        } catch (err: any) {
+          // Best-effort - don't fail commit for fsync errors
+          if (process.env.JSONSTORE_DEBUG) {
+            console.warn(`Directory fsync failed for ${parentDir}:`, err.message);
+          }
+        }
+      }
+    } catch (err) {
+      // Clean up staging on error
+      await this.abort();
+      throw new DocumentWriteError(this.#rootDir, { cause: err });
+    }
+  }
+
+  /**
+   * Abort the transaction and clean up staging directory
+   * Idempotent - safe to call multiple times
+   */
+  async abort(): Promise<void> {
+    if (this.#aborted || this.#committed) {
+      return;
+    }
+
+    this.#aborted = true;
+
+    try {
+      await fs.rm(this.#stagingDir, { recursive: true, force: true });
+    } catch (err: any) {
+      // Best-effort cleanup - don't throw on failure
+      if (process.env.JSONSTORE_DEBUG) {
+        console.warn(`Failed to clean up staging dir ${this.#stagingDir}:`, err.message);
+      }
+    }
+  }
+
+  /**
+   * Check if transaction has been finalized (committed or aborted)
+   */
+  #checkNotFinalized(): void {
+    if (this.#committed) {
+      throw new Error("Transaction already committed");
+    }
+    if (this.#aborted) {
+      throw new Error("Transaction already aborted");
+    }
+  }
+}
