@@ -9,6 +9,7 @@
 - Where they're located
 - How they work together
 - What patterns to follow
+- What tests to write
 
 **Think of this as:** The architectural research and planning work that happens before implementation. You're not implementing the feature—you're creating the blueprint that makes implementation straightforward.
 
@@ -61,6 +62,7 @@ For the implementing agent, document:
 4. **Patterns to follow** - How similar features are structured
 5. **Integration points** - Where to hook into existing code
 6. **Dependencies** - What must be built first
+7. **Testing strategy** - What tests to write and how to verify the implementation
 
 ---
 
@@ -206,7 +208,116 @@ Document what the agent needs to know about:
 Pattern: Follow existing index.build.* events in same files
 ```
 
-### Section 4: Files to Modify
+### Section 4: Testing Strategy
+
+Plan comprehensive test coverage to ensure the feature works correctly:
+
+```markdown
+## Testing Strategy
+
+**Unit Tests (SDK):**
+
+Test the core functionality in isolation:
+
+1. **Store.rebuildIndexes() tests** in /packages/sdk/src/store.test.ts
+   - Test rebuilding specific fields: `rebuildIndexes('task', ['status', 'priority'])`
+   - Test rebuilding all configured indexes: `rebuildIndexes('task')` with no fields param
+   - Test with no documents: should return { docsScanned: 0, indexesRebuilt: 2, durationMs }
+   - Test with corrupted index file: should delete and rebuild successfully
+   - Test partial failure: if one field fails, should continue with others and return partial stats
+   - Test no configured indexes: should throw helpful error when --all but no config
+   - Verify return stats accuracy: counts match actual docs/indexes
+   - Verify cache invalidation: index files are deleted and rebuilt
+
+**Integration Tests (CLI):**
+
+Test the command-line interface in real scenarios:
+
+2. **reindex command tests** in /packages/cli/test/cli.test.ts
+   - Test `jsonstore reindex task status priority` - rebuilds specific fields
+   - Test `jsonstore reindex task --all` - rebuilds all configured indexes from config
+   - Test exit codes: 0 for success, 1 for validation errors (bad type/field), 3 for I/O errors
+   - Test output format: verify human-readable display with stats
+   - Test with --dir flag: uses custom data directory
+   - Test with DATA_ROOT env var: respects environment variable
+   - Test progress reporting: for large datasets (> 5k docs), verify progress messages
+
+**Edge Case Tests:**
+
+Critical scenarios to verify:
+
+3. **Error Handling:**
+   - Missing type directory: should handle gracefully (no docs = empty rebuild)
+   - Invalid field name: should throw ValidationError
+   - File system permissions: should exit with code 3 on I/O errors
+   - Concurrent access: verify atomicWrite() prevents corruption
+
+4. **Performance Tests (optional, via VITEST_PERF=1):**
+   - Benchmark with 10k documents: should complete < 2s (matches format SLO)
+   - Verify progress reporting at 1000-doc intervals
+   - Test DocumentCache usage: reads should hit cache
+
+**Test Data Setup:**
+
+Use existing test utilities from /packages/sdk/src/store.test.ts:
+
+```typescript
+// Setup: Create store with sample documents
+const tmpDir = await mkdtemp(join(tmpdir(), 'test-'));
+const store = new Store({
+  root: tmpDir,
+  indexes: { task: ['status', 'priority', 'assignee'] }
+});
+
+// Add test documents
+await store.put({ type: 'task', id: '1', status: 'open', priority: 'high' });
+await store.put({ type: 'task', id: '2', status: 'closed', priority: 'low' });
+// ... more docs
+
+// Build initial indexes
+await store.ensureIndex('task', 'status');
+await store.ensureIndex('task', 'priority');
+
+// Corrupt an index file (for corruption test)
+await writeFile(join(tmpDir, 'data/task/_indexes/status.json'), 'invalid json');
+
+// Execute test
+const stats = await store.rebuildIndexes('task', ['status']);
+
+// Assertions
+expect(stats.docsScanned).toBe(2);
+expect(stats.indexesRebuilt).toBe(1);
+expect(stats.durationMs).toBeGreaterThan(0);
+
+// Verify index file is valid
+const index = JSON.parse(await readFile(join(tmpDir, 'data/task/_indexes/status.json'), 'utf-8'));
+expect(index.open).toEqual(['1']);
+expect(index.closed).toEqual(['2']);
+```
+
+**Observability Tests:**
+
+Verify logging and metrics:
+
+5. **Logging verification:**
+   - Mock logger in /packages/sdk/src/observability/logs.ts
+   - Verify `index.rebuild.start` event is logged with { type, fields, timestamp }
+   - Verify `index.rebuild.end` event is logged with stats
+   - Verify `index.rebuild.error` event on field failure
+
+6. **Metrics verification:**
+   - Mock metrics collector in /packages/sdk/src/observability/metrics.ts
+   - Verify `index_rebuild_duration_ms` histogram is updated
+   - Verify `index_rebuild_doc_count` counter is incremented
+
+**Test Coverage Goals:**
+- Unit tests: > 90% coverage for Store.rebuildIndexes()
+- Integration tests: All CLI flags and exit codes
+- Edge cases: All error conditions documented above
+- Observability: All log events and metrics
+```
+
+### Section 5: Files to Modify
 
 Be explicit about every file:
 
@@ -288,6 +399,14 @@ Before posting your comment, verify you've documented:
 - [ ] Listed edge cases from existing code
 - [ ] Provided performance targets
 - [ ] Documented observability patterns
+
+**Testing Strategy:**
+- [ ] Specified unit tests with test cases
+- [ ] Specified integration tests for CLI/API
+- [ ] Listed edge case tests to cover
+- [ ] Provided test data setup examples
+- [ ] Documented observability tests (logging/metrics)
+- [ ] Set test coverage goals
 
 **Files:**
 - [ ] Listed every file to modify with line counts
@@ -416,6 +535,54 @@ reindex.ts → Store.rebuildIndexes() → for each field:
 **Add to /packages/sdk/src/observability/metrics.ts:**
 - `index_rebuild_duration_ms` (histogram)
 - `index_rebuild_doc_count` (counter)
+
+## Testing Strategy
+
+**Unit Tests (SDK - /packages/sdk/src/store.test.ts):**
+1. `rebuildIndexes('task', ['status', 'priority'])` - rebuilds specific fields
+2. `rebuildIndexes('task')` with no fields - rebuilds all configured indexes
+3. No documents case - returns { docsScanned: 0, indexesRebuilt: 2, durationMs }
+4. Corrupted index file - deletes and rebuilds successfully
+5. Partial failure - one field fails, continues with others, returns partial stats
+6. No configured indexes - throws error: "No indexes configured for type 'task'"
+7. Stats accuracy - counts match actual docs/indexes
+8. Cache invalidation - index files deleted and rebuilt
+
+**Integration Tests (CLI - /packages/cli/test/cli.test.ts):**
+1. `jsonstore reindex task status priority` - specific fields
+2. `jsonstore reindex task --all` - all configured from config
+3. Exit codes: 0=success, 1=validation, 3=I/O
+4. Output format: human-readable with stats
+5. `--dir` flag and DATA_ROOT env var
+6. Progress reporting for > 5k docs
+
+**Edge Cases:**
+- Missing type directory - handles gracefully
+- Invalid field name - ValidationError
+- File system permissions - exit code 3
+- Concurrent access - atomicWrite() prevents corruption
+
+**Performance (optional VITEST_PERF=1):**
+- 10k docs < 2s (matches format SLO)
+- Progress at 1000-doc intervals
+- DocumentCache usage
+
+**Test setup example:**
+```typescript
+const store = new Store({ root: tmpDir, indexes: { task: ['status', 'priority'] } });
+await store.put({ type: 'task', id: '1', status: 'open' });
+await store.ensureIndex('task', 'status');
+// Corrupt file for test
+await writeFile('.../_indexes/status.json', 'invalid');
+const stats = await store.rebuildIndexes('task', ['status']);
+expect(stats.docsScanned).toBe(1);
+```
+
+**Observability tests:**
+- Mock logger: verify index.rebuild.start/end/error events
+- Mock metrics: verify index_rebuild_duration_ms histogram, index_rebuild_doc_count counter
+
+**Coverage goals:** > 90% unit, all CLI flags/exit codes, all edge cases, all observability
 
 ## Files to Modify
 
