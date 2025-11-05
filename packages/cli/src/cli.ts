@@ -451,6 +451,94 @@ program
     }
   });
 
+// Reindex command
+program
+  .command("reindex [type] [fields...]")
+  .description("Rebuild indexes from documents")
+  .option("--all", "Rebuild all indexes in the store")
+  .option("--force", "Force rebuild by deleting existing indexes first")
+  .option("--json", "Output as JSON for machine consumption")
+  .action(async (type, fields, options) => {
+    await withTiming("cli.reindex", async () => {
+      const opts = program.opts();
+
+      // Validate arguments
+      if (options.all && type) {
+        throw new InvalidArgumentError("Cannot use --all with [type]");
+      }
+
+      if (!options.all && !type) {
+        throw new InvalidArgumentError("Specify --all or <type>");
+      }
+
+      if (fields.length > 0 && options.all) {
+        throw new InvalidArgumentError("Cannot specify fields with --all");
+      }
+
+      const root = resolveRoot(opts.root);
+      const store = openCliStore(root);
+
+      if (options.all) {
+        // Rebuild all indexes across all types
+        const summary = await store.reindex({ force: options.force });
+
+        if (options.json) {
+          printJson(summary);
+        } else if (!opts.quiet) {
+          if (summary.totalIndexes === 0) {
+            console.log("✓ No indexes to rebuild");
+          } else {
+            console.log(`✓ Rebuilt ${summary.totalIndexes} index(es) across ${summary.types.length} type(s)`);
+            console.log(`  Documents scanned: ${summary.totalDocs}`);
+            console.log(`  Duration: ${summary.durationMs.toFixed(2)}ms`);
+
+            if (opts.verbose) {
+              console.log("\nPer-type breakdown:");
+              for (const typeSummary of summary.types) {
+                console.log(`  ${typeSummary.type}:`);
+                console.log(`    Documents: ${typeSummary.docsScanned}`);
+                console.log(`    Fields: ${typeSummary.fields.map((f) => f.field).join(", ")}`);
+                for (const field of typeSummary.fields) {
+                  console.log(`      ${field.field}: ${field.keys} keys, ${formatBytes(field.bytes)}`);
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // Rebuild indexes for specific type
+        const rebuildOptions = {
+          fields: fields.length > 0 ? fields : undefined,
+          force: options.force,
+        };
+
+        const summary = await store.rebuildIndexes(type, rebuildOptions);
+
+        if (options.json) {
+          printJson(summary);
+        } else if (!opts.quiet) {
+          if (summary.fields.length === 0) {
+            console.log(`✓ No indexes to rebuild for type "${type}"`);
+          } else {
+            console.log(`✓ Rebuilt ${summary.fields.length} index(es) for type "${type}"`);
+            console.log(`  Documents scanned: ${summary.docsScanned}`);
+            console.log(`  Duration: ${summary.durationMs.toFixed(2)}ms`);
+
+            if (opts.verbose) {
+              console.log("\nField breakdown:");
+              for (const field of summary.fields) {
+                console.log(`  ${field.field}:`);
+                console.log(`    Keys: ${field.keys}`);
+                console.log(`    Size: ${formatBytes(field.bytes)}`);
+                console.log(`    Duration: ${field.durationMs.toFixed(2)}ms`);
+              }
+            }
+          }
+        }
+      }
+    });
+  });
+
 // Add schema command group
 program.addCommand(createSchemaCommand(program));
 

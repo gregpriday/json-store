@@ -17,7 +17,7 @@ import { getPath } from "./query.js";
 import { atomicWrite, readDocument, listFiles } from "./io.js";
 import { stableStringify } from "./format.js";
 import { validateName } from "./validation.js";
-import type { Document } from "./types.js";
+import type { Document, ReindexFieldStats, ReindexSummary, RebuildIndexesOptions } from "./types.js";
 import { metrics } from "./observability/metrics.js";
 import { logger } from "./observability/logs.js";
 
@@ -117,22 +117,48 @@ export class IndexManager {
   /**
    * Build or rebuild an index for a field
    */
-  async ensureIndex(type: string, field: string, docs?: Document[]): Promise<void> {
+  async ensureIndex(
+    type: string,
+    field: string,
+    docs?: Document[],
+    options?: { force?: boolean }
+  ): Promise<ReindexFieldStats> {
     validateName(type, "type");
     validateName(field, "id"); // Reuse validation pattern
 
     const startTime = performance.now();
     logger.info("index.rebuild.start", { type, field });
 
+    const forceRebuild = options?.force ?? false;
+
+    let stats: ReindexFieldStats = {
+      field,
+      docsScanned: 0,
+      keys: 0,
+      bytes: 0,
+      durationMs: 0,
+    };
+
     const mutex = this.#getMutex(type, field);
     await mutex.withLock(async () => {
-      // Load all documents if not provided
-      if (!docs) {
-        docs = await this.#loadAllDocs(type);
+      const indexPath = this.#getIndexPath(type, field);
+
+      if (forceRebuild) {
+        try {
+          await fs.unlink(indexPath);
+        } catch (err: any) {
+          if (err.code !== "ENOENT") {
+            throw err;
+          }
+        }
       }
 
+      // Load all documents if not provided
+      const docsToIndex =
+        forceRebuild || !docs ? await this.#loadAllDocs(type) : docs;
+
       // Build index from scratch
-      const index = this.#buildIndex(docs, field);
+      const index = this.#buildIndex(docsToIndex, field);
 
       // Write to disk
       await this.#writeIndex(type, field, index);
@@ -142,15 +168,25 @@ export class IndexManager {
       metrics.recordRebuildTime(type, field, duration);
 
       const keys = Object.keys(index).length;
-      const bytes = JSON.stringify(index).length;
+      const { size: bytes } = await fs.stat(indexPath);
       metrics.updateSize(type, field, keys, bytes);
+
+      stats = {
+        field,
+        docsScanned: docsToIndex.length,
+        keys,
+        bytes,
+        durationMs: parseFloat(duration.toFixed(2)),
+      };
 
       logger.info("index.rebuild.end", {
         type,
         field,
-        details: { durationMs: duration.toFixed(2), docs: docs!.length, keys },
+        details: { durationMs: duration.toFixed(2), docs: docsToIndex.length, keys },
       });
     });
+
+    return stats;
   }
 
   /**
@@ -308,8 +344,12 @@ export class IndexManager {
   /**
    * Rebuild all indexes for a type
    */
-  async rebuildIndexes(type: string, fields?: string[]): Promise<void> {
+  async rebuildIndexes(type: string, options?: RebuildIndexesOptions): Promise<ReindexSummary> {
     validateName(type, "type");
+
+    const startTime = performance.now();
+    let fields = options?.fields;
+    const force = options?.force ?? false;
 
     // If fields not specified, discover existing indexes
     if (!fields || fields.length === 0) {
@@ -319,17 +359,36 @@ export class IndexManager {
 
       if (fields.length === 0) {
         // No indexes to rebuild
-        return;
+        return {
+          type,
+          docsScanned: 0,
+          fields: [],
+          durationMs: 0,
+        };
       }
     }
 
-    // Load all documents once
-    const docs = await this.#loadAllDocs(type);
+    // Load all documents once when not forcing rebuild (safe reuse snapshot)
+    const docs = force ? undefined : await this.#loadAllDocs(type);
 
-    // Rebuild each index
+    // Rebuild each index and collect stats
+    const fieldStats: ReindexFieldStats[] = [];
     for (const field of fields) {
-      await this.ensureIndex(type, field, docs);
+      const stats = await this.ensureIndex(type, field, docs, { force });
+      fieldStats.push(stats);
     }
+
+    const durationMs = parseFloat((performance.now() - startTime).toFixed(2));
+    const docsScanned =
+      docs?.length ??
+      (fieldStats.length > 0 ? Math.max(...fieldStats.map((s) => s.docsScanned)) : 0);
+
+    return {
+      type,
+      docsScanned,
+      fields: fieldStats,
+      durationMs,
+    };
   }
 
   /**

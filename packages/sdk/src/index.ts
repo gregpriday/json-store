@@ -40,6 +40,12 @@ export type {
   SchemaRegistry,
   SchemaValidator,
   FormatValidator,
+  // Reindex types
+  ReindexFieldStats,
+  ReindexSummary,
+  ReindexAllSummary,
+  RebuildIndexesOptions,
+  ReindexOptions,
 } from "./types.js";
 
 // Re-export cache types

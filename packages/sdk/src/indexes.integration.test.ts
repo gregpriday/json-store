@@ -2,7 +2,7 @@
  * Integration tests for indexes with Store
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { openStore } from "./store.js";
@@ -28,6 +28,7 @@ describe("Index Integration", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await store.close();
     await fs.rm(TEST_ROOT, { recursive: true, force: true });
   });
@@ -571,6 +572,160 @@ describe("Index Integration", () => {
       });
       expect(results).toHaveLength(1);
       expect(results[0]!.id).toBe("001");
+    });
+  });
+
+  describe("Store.reindex", () => {
+    it("should rebuild all indexes across all types", async () => {
+      // Create documents for multiple types
+      await store.put(
+        { type: "task", id: "001" },
+        { type: "task", id: "001", status: "open", priority: 1 }
+      );
+      await store.put(
+        { type: "task", id: "002" },
+        { type: "task", id: "002", status: "closed", priority: 2 }
+      );
+      await store.put({ type: "user", id: "u1" }, { type: "user", id: "u1", role: "admin" });
+
+      // Create indexes
+      await store.ensureIndex("task", "status");
+      await store.ensureIndex("task", "priority");
+      await store.ensureIndex("user", "role");
+
+      // Reindex all
+      const summary = await store.reindex();
+
+      expect(summary.totalDocs).toBe(3); // 2 tasks + 1 user
+      expect(summary.totalIndexes).toBe(3);
+      expect(summary.types).toHaveLength(2);
+
+      const taskSummary = summary.types.find((t) => t.type === "task");
+      expect(taskSummary).toBeDefined();
+      expect(taskSummary!.docsScanned).toBe(2);
+      expect(taskSummary!.fields).toHaveLength(2);
+
+      const userSummary = summary.types.find((t) => t.type === "user");
+      expect(userSummary).toBeDefined();
+      expect(userSummary!.docsScanned).toBe(1);
+      expect(userSummary!.fields).toHaveLength(1);
+    });
+
+    it("should force rebuild when requested", async () => {
+      await store.put(
+        { type: "task", id: "001" },
+        { type: "task", id: "001", status: "open" }
+      );
+
+      // Create index
+      await store.ensureIndex("task", "status");
+      const indexPath = path.join(TEST_ROOT, "task", "_indexes", "status.json");
+
+      // Get initial file stats
+      const statsBefore = await fs.stat(indexPath);
+
+      // Add a small delay to ensure mtime difference is detectable
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Force rebuild
+      await store.reindex({ force: true });
+
+      // Verify index was rebuilt (mtime should be different)
+      const statsAfter = await fs.stat(indexPath);
+      expect(statsAfter.mtime.getTime()).toBeGreaterThan(statsBefore.mtime.getTime());
+
+      // Verify content is correct
+      const rebuiltIndex = JSON.parse(await fs.readFile(indexPath, "utf-8"));
+      expect(rebuiltIndex).toEqual({ open: ["001"] });
+    });
+
+    it("should rebuild configured indexes even with no documents", async () => {
+      // Store is configured with indexes for task and user types
+      const summary = await store.reindex();
+
+      // Should still rebuild configured indexes even though no docs exist
+      expect(summary.totalDocs).toBe(0);
+      expect(summary.totalIndexes).toBe(3); // task: status + priority, user: role
+      expect(summary.types).toHaveLength(2);
+
+      // Verify each type
+      const taskSummary = summary.types.find((t) => t.type === "task");
+      expect(taskSummary).toBeDefined();
+      expect(taskSummary!.docsScanned).toBe(0);
+      expect(taskSummary!.fields).toHaveLength(2); // status, priority
+
+      const userSummary = summary.types.find((t) => t.type === "user");
+      expect(userSummary).toBeDefined();
+      expect(userSummary!.docsScanned).toBe(0);
+      expect(userSummary!.fields).toHaveLength(1); // role
+    });
+
+    it("should merge configured and discovered indexes", async () => {
+      // Create a document
+      await store.put(
+        { type: "task", id: "001" },
+        { type: "task", id: "001", status: "open", priority: 1 }
+      );
+
+      // Create indexes (configured ones should already be created via config)
+      await store.ensureIndex("task", "status");
+      await store.ensureIndex("task", "priority");
+
+      const summary = await store.reindex();
+
+      const taskSummary = summary.types.find((t) => t.type === "task");
+      expect(taskSummary).toBeDefined();
+      // Should rebuild both status and priority
+      expect(taskSummary!.fields.map((f) => f.field).sort()).toEqual(["priority", "status"]);
+    });
+  });
+
+  describe("Store.rebuildIndexes", () => {
+    it("should return statistics for rebuilt indexes", async () => {
+      await store.put(
+        { type: "task", id: "001" },
+        { type: "task", id: "001", status: "open", priority: 1 }
+      );
+      await store.put(
+        { type: "task", id: "002" },
+        { type: "task", id: "002", status: "closed", priority: 2 }
+      );
+
+      await store.ensureIndex("task", "status");
+
+      const summary = await store.rebuildIndexes("task", { fields: ["status"] });
+
+      expect(summary.type).toBe("task");
+      expect(summary.docsScanned).toBe(2);
+      expect(summary.fields).toHaveLength(1);
+      expect(summary.fields[0].field).toBe("status");
+      expect(summary.fields[0].keys).toBe(2);
+      expect(summary.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should track rebuilt indexes in store options", async () => {
+      await store.put(
+        { type: "task", id: "001" },
+        { type: "task", id: "001", status: "open", newField: "test" }
+      );
+
+      // Rebuild with a new field not in original config
+      await store.rebuildIndexes("task", { fields: ["newField"] });
+
+      // Now put a new document - it should update the new index
+      await store.put(
+        { type: "task", id: "002" },
+        { type: "task", id: "002", status: "open", newField: "test2" }
+      );
+
+      // Verify the index was updated
+      const indexPath = path.join(TEST_ROOT, "task", "_indexes", "newField.json");
+      const content = await fs.readFile(indexPath, "utf-8");
+      const index = JSON.parse(content);
+      expect(index).toEqual({
+        test: ["001"],
+        test2: ["002"],
+      });
     });
   });
 });

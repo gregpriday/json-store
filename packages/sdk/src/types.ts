@@ -539,9 +539,15 @@ export interface Store {
   /**
    * Rebuild indexes for a type
    * @param type - Entity type
-   * @param fields - Optional array of fields to rebuild (default: all)
+   * @param options - Rebuild options (fields, force)
    */
-  rebuildIndexes(type: string, fields?: string[]): Promise<void>;
+  rebuildIndexes(type: string, options?: RebuildIndexesOptions): Promise<ReindexSummary>;
+
+  /**
+   * Reindex all types in the store
+   * @param options - Reindex options (force)
+   */
+  reindex(options?: ReindexOptions): Promise<ReindexAllSummary>;
 
   /**
    * Get a document by slug
@@ -652,3 +658,62 @@ export interface Store {
    */
   repairHierarchy(type?: string): Promise<RepairReport>;
 }
+
+/**
+ * Statistics for rebuilding a single field index
+ */
+export interface ReindexFieldStats {
+  /** Field name */
+  field: string;
+  /** Number of documents scanned */
+  docsScanned: number;
+  /** Number of index keys created */
+  keys: number;
+  /** Index file size in bytes */
+  bytes: number;
+  /** Rebuild duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Summary statistics for rebuilding indexes on a type
+ */
+export interface ReindexSummary {
+  /** Entity type */
+  type: string;
+  /** Number of documents scanned */
+  docsScanned: number;
+  /** Per-field statistics */
+  fields: ReindexFieldStats[];
+  /** Total duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Summary statistics for reindexing all types
+ */
+export interface ReindexAllSummary {
+  /** Total documents scanned across all types */
+  totalDocs: number;
+  /** Total indexes rebuilt */
+  totalIndexes: number;
+  /** Per-type summaries */
+  types: ReindexSummary[];
+  /** Total duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Options for rebuilding indexes
+ */
+export interface RebuildIndexesOptions {
+  /** Specific fields to rebuild (omit for all) */
+  fields?: string[];
+  /** Force rebuild by deleting existing indexes first */
+  force?: boolean;
+}
+
+/**
+ * Options for reindexing all types
+ */
+export type ReindexOptions = Pick<RebuildIndexesOptions, "force">;
