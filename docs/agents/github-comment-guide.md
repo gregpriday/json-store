@@ -1,291 +1,449 @@
-# GitHub Issue Exploration Guide for AI Agents
+# GitHub Issue Analysis Guide for AI Agents
 
-**Purpose:** When an AI agent reviews a JSON Store GitHub issue, spend 5-10 minutes exploring the codebase to understand how the feature should be implemented, then provide a comment with your findings.
+**Purpose:** Provide a comprehensive codebase map for the issue, so the implementing agent can start coding immediately without extensive exploration.
 
-**Key Principle:** The issue describes WHAT needs to be done. Your job is to explore the codebase and figure out HOW it should be done, then share that architectural understanding.
+**Your Goal:** Read the issue, explore the relevant parts of the codebase, then create a comment that gives the implementing agent a complete picture of:
+- What existing functions/classes to use
+- Where they're located
+- How they work together
+- What patterns to follow
 
 ---
 
-## Your Exploration Process (5-10 minutes)
+## Your Analysis Process
 
-### Phase 1: Understand the Issue (1-2 min)
-1. Read the issue carefully - what problem are we solving?
-2. Note any options or approaches mentioned
-3. Identify the affected files/components listed
+### Step 1: Understand the Issue
+- What feature is being added or fixed?
+- What files does the issue mention?
+- Are there multiple approaches proposed?
 
-### Phase 2: Explore Existing Patterns (3-5 min)
-Before recommending an approach, **explore how similar features are currently implemented**:
+### Step 2: Map the Relevant Code
+Find and read the relevant existing code:
 
 **If adding a Store method:**
-- Read /packages/sdk/src/store.ts - how are existing methods structured?
-- Check /packages/sdk/src/types.ts - what's the interface pattern?
-- Look at similar methods - how do they handle validation, caching, errors?
-- Where do they call into (IndexManager, HierarchyManager, validation functions)?
+- Locate similar methods in /packages/sdk/src/store.ts
+- Check how they're defined in /packages/sdk/src/types.ts
+- Find what they call (IndexManager, HierarchyManager, validation functions, etc.)
+- Note error handling patterns and return types
 
 **If adding a CLI command:**
-- Read /packages/cli/src/cli.ts - how are commands registered?
-- Check /packages/cli/src/commands/ - what's the handler pattern?
-- Look at a similar command - how does it parse args, handle I/O, display output?
-- What SDK methods does it call?
+- Find similar commands in /packages/cli/src/commands/
+- Check how they're registered in /packages/cli/src/cli.ts
+- See what SDK methods they call
+- Note argument parsing and output patterns
 
 **If adding an MCP tool:**
-- Read /packages/server/src/tools.ts - how are tools defined?
-- Check /packages/server/src/schemas.ts - what's the Zod schema pattern?
-- Look at a similar tool - how does it validate, call SDK, format responses?
+- Find similar tools in /packages/server/src/tools.ts
+- Check schemas in /packages/server/src/schemas.ts
+- See what SDK methods they call
+- Note validation and error response patterns
 
 **If adding an index type:**
-- Read /packages/sdk/src/indexes.ts - how does IndexManager work?
-- Check existing index files in a test fixture - what's the format?
-- How are indexes updated in Store.put() and Store.remove()?
-- Where does the query optimizer decide to use indexes?
+- Read /packages/sdk/src/indexes.ts to understand IndexManager
+- Check how indexes are updated in Store.put() and Store.remove()
+- See how the query optimizer uses indexes in /packages/sdk/src/query.ts
+- Note the sidecar file format
 
-**If adding validation:**
-- Read /packages/sdk/src/validation.ts - what's the validation pattern?
-- How are errors thrown? (Check /packages/sdk/src/errors.ts)
-- Where is validation called from?
+**If modifying validation:**
+- Read /packages/sdk/src/validation.ts for existing validators
+- Check /packages/sdk/src/errors.ts for error types
+- See where validation is called from
 
-### Phase 3: Identify Integration Points (2-3 min)
-After exploring existing code, answer:
-- What existing functions/classes will this feature use?
-- What new functions/classes need to be created?
-- How does data flow through the system?
-- What's the dependency order? (What must be built first?)
-- What patterns from existing code should be followed?
-
-### Phase 4: Consider Edge Cases (1-2 min)
-Based on what you learned:
-- What edge cases does the existing code handle that this feature should too?
-- What failure modes exist in similar features?
-- What performance considerations apply? (Check existing perf targets)
-- What observability patterns are used? (Check logs/metrics in similar features)
+### Step 3: Document the Architecture
+For the implementing agent, document:
+1. **Existing functions to use** - Name, location, signature, purpose
+2. **New functions to create** - Where they should go, what they should do
+3. **Data flow** - How components interact (A calls B calls C)
+4. **Patterns to follow** - How similar features are structured
+5. **Integration points** - Where to hook into existing code
+6. **Dependencies** - What must be built first
 
 ---
 
-## Your Comment Should Provide
+## Your Comment Structure
 
-After exploration, write a comment that shares **what you discovered** and **how it informs the implementation**:
+### Section 1: Relevant Existing Code
 
-### 1. Architectural Understanding
-"I explored [files] and found that [pattern]. This issue should follow the same pattern because [reason]."
+Tell the agent exactly what's already there and where to find it:
 
-**Example:**
-> I explored /packages/sdk/src/store.ts and /packages/sdk/src/indexes.ts. Existing index operations follow this pattern: Store method → IndexManager function → atomicWrite(). Store.ensureIndex() coordinates but IndexManager.buildIndex() owns the index format. Store.rebuildIndexes() should follow this same separation: Store orchestrates, IndexManager rebuilds.
+```markdown
+## Relevant Existing Code
 
-### 2. Discovered Integration Points
-"Here's how this feature integrates with existing code:"
+**Index operations (the pattern to follow):**
+- `Store.ensureIndex(type, field)` in /packages/sdk/src/store.ts lines 340-365
+  - Validates type/field, then delegates to IndexManager
+  - Returns void, throws on validation errors
+  - Calls `IndexManager.buildIndex(type, field)` to do actual work
 
-**Example:**
-> Integration points discovered:
-> - Store.rebuildIndexes() should call IndexManager.buildIndex() (same as ensureIndex uses)
-> - Need to read configured indexes from store.config.json (pattern used in Store constructor)
-> - Should use same progress reporting pattern as format operation (emits events every N docs)
-> - Errors should use existing DocumentWriteError from /packages/sdk/src/errors.ts
+- `IndexManager.buildIndex(type, field)` in /packages/sdk/src/indexes.ts lines 120-180
+  - Scans all documents of type, builds map { value: [ids] }
+  - Writes to /data/<type>/_indexes/<field>.json using atomicWrite()
+  - Returns index stats: { field, entries, durationMs }
 
-### 3. Implementation Sequence
-"Based on dependencies in the code, build in this order:"
+**CLI command pattern (the structure to copy):**
+- `ensure-index` command in /packages/cli/src/commands/ensure-index.ts
+  - Registered in cli.ts: `program.command('ensure-index <type> <field>')`
+  - Opens store from --dir or DATA_ROOT
+  - Calls `store.ensureIndex(type, field)`
+  - Displays success message with field name
+  - Exit codes: 0=success, 1=validation error, 3=I/O error
 
-**Example:**
-> Build order (based on existing dependencies):
-> 1. First: Add Store.rebuildIndexes() method - it needs to exist before CLI can call it
-> 2. Then: Update IndexManager if needed (but current buildIndex() should work as-is)
-> 3. Finally: Add CLI command in /packages/cli/src/commands/reindex.ts calling Store.rebuildIndexes()
->
-> This matches how ensure-index was built (SDK first, then CLI wrapper).
+**Similar operations for reference:**
+- `Store.format()` in /packages/sdk/src/store.ts lines 400-450
+  - Returns stats: { docsFormatted, durationMs }
+  - Reports progress for large datasets (> 1000 docs)
+  - Logs format.start/end events in observability/logs.ts
+```
 
-### 4. Patterns to Follow
-"I found these patterns in similar features that this should follow:"
+### Section 2: Implementation Map
 
-**Example:**
-> Patterns to follow (from existing code):
-> - Progress reporting: Store.format() reports every 100 docs, rebuildIndexes should do same
-> - Statistics: Similar to format, return { docsScanned, indexesRebuilt, durationMs }
-> - Error handling: Store.ensureIndex() logs but doesn't fail on single field errors, rebuildIndexes should too
-> - Config reading: Store.format() uses this.options, rebuildIndexes should read indexes from same place
+Give the agent a complete roadmap:
 
-### 5. Edge Cases from Existing Code
-"Similar features handle these edge cases, so this should too:"
+```markdown
+## Implementation Map
 
-**Example:**
-> Edge cases I found in existing code:
-> - Store.ensureIndex() handles corrupted index files by rebuilding (same approach for reindex)
-> - Store.format() skips hidden directories (reindex should too when scanning docs)
-> - IndexManager uses atomicWrite for all index updates (rebuildIndexes must follow this)
-> - Store.put() validates type/id before writing (rebuildIndexes should validate before rebuilding)
+**What to build:**
 
-### 6. Performance & Observability
-"Here's what I found about performance and logging:"
+1. **SDK Method: Store.rebuildIndexes()**
+   - Location: Add to /packages/sdk/src/store.ts after ensureIndex (around line 370)
+   - Signature: `async rebuildIndexes(type: string, fields?: string[]): Promise<RebuildStats>`
+   - Logic:
+     - If fields is undefined, read from `this.options.indexes[type]` (same pattern as format)
+     - For each field: delete /data/<type>/_indexes/<field>.json, then call `IndexManager.buildIndex(type, field)`
+     - Collect stats: total docs scanned, indexes rebuilt, duration
+     - Log errors but continue to next field (pattern from ensureIndex)
+   - Returns: `{ docsScanned: number, indexesRebuilt: number, durationMs: number }`
+   - Calls: `IndexManager.buildIndex()` (already exists), `removeDocument()` for delete
 
-**Example:**
-> Performance & observability (from similar operations):
-> - Store.format() targets p95 < 2s for 10k docs, rebuildIndexes should match
-> - IndexManager logs index.build.start/end events, rebuildIndexes should log index.rebuild.start/end
-> - Progress reporting needed for > 5k docs (pattern from format operation)
-> - Metrics tracked in /packages/sdk/src/observability/metrics.ts, add index_rebuild_duration_ms
+2. **Type Definition: RebuildStats**
+   - Location: Add to /packages/sdk/src/types.ts (around line 300 near other stats types)
+   - Definition: `{ docsScanned: number; indexesRebuilt: number; durationMs: number }`
+   - Export from /packages/sdk/src/index.ts
+
+3. **CLI Command: reindex**
+   - Location: Create /packages/cli/src/commands/reindex.ts (copy structure from ensure-index.ts)
+   - Register in /packages/cli/src/cli.ts: `program.command('reindex <type> [fields...]')`
+   - Logic:
+     - Parse args: type (required), fields (optional array)
+     - Open store from --dir or DATA_ROOT
+     - Call `store.rebuildIndexes(type, fields)`
+     - Display: "Rebuilt 3 indexes: status (50 entries), priority (12 entries), assignee (8 entries) in 1.2s"
+   - Flags: `--all` to rebuild all configured indexes (pass undefined for fields)
+
+**Data flow:**
+```
+CLI command (reindex.ts)
+  → Store.rebuildIndexes(type, fields) [store.ts]
+    → For each field:
+      → Remove index file (if exists)
+      → IndexManager.buildIndex(type, field) [indexes.ts]
+        → Scan documents
+        → Build index map
+        → atomicWrite() to save [io.ts]
+    → Return stats
+  → Display results
+```
+
+**Build order:**
+1. Add RebuildStats type to types.ts (no dependencies)
+2. Add Store.rebuildIndexes() method (depends on RebuildStats, uses existing IndexManager)
+3. Export from index.ts (depends on rebuildIndexes existing)
+4. Add CLI command (depends on Store.rebuildIndexes being available)
+5. Register in cli.ts (depends on command file existing)
+```
+
+### Section 3: Patterns & Edge Cases
+
+Document what the agent needs to know about:
+
+```markdown
+## Patterns to Follow
+
+**From Store.ensureIndex and IndexManager.buildIndex:**
+- Store coordinates, IndexManager owns index format (separation of concerns)
+- Use atomicWrite() for all index file operations (consistency guarantee)
+- Validate inputs before delegating (fail fast principle)
+- Log errors per field but continue rebuilding others (partial failure tolerance)
+
+**From Store.format operation:**
+- Return stats object with counts and duration (user feedback)
+- Report progress for large datasets: emit event every 1000 docs (UX for long operations)
+- Read config from this.options.indexes[type] when --all flag used (config pattern)
+
+**From CLI commands:**
+- Exit code 1 for validation errors (invalid type/field)
+- Exit code 3 for I/O errors (file system issues)
+- Display human-readable output with statistics (don't just log JSON)
+
+## Edge Cases to Handle
+
+**From existing index code:**
+1. **Corrupted index file:** IndexManager.buildIndex already handles this by rebuilding, rebuildIndexes should explicitly delete first to force rebuild
+2. **Missing type directory:** Store.list() handles this, rebuildIndexes will inherit (returns empty if no docs)
+3. **Partial field failure:** Store.ensureIndex logs error but continues, rebuildIndexes should collect errors in array, log each, return partial stats
+4. **No configured indexes:** If --all flag but no indexes[type] in config, return helpful error: "No indexes configured for type 'X'"
+
+**Performance considerations:**
+- For > 5k documents, report progress: "Scanned 5000/12000 documents..."
+- Target: < 2s for 10k docs (matches Store.format SLO)
+- Use existing DocumentCache for reads (already wired in Store.list)
+
+## Observability
+
+**Logging (add to /packages/sdk/src/observability/logs.ts):**
+- Event: `index.rebuild.start` with { type, fields, timestamp }
+- Event: `index.rebuild.end` with { type, fields, docsScanned, indexesRebuilt, durationMs, timestamp }
+- Event: `index.rebuild.error` with { type, field, error, timestamp }
+
+**Metrics (add to /packages/sdk/src/observability/metrics.ts):**
+- Metric: `index_rebuild_duration_ms` (histogram with p50, p95, p99)
+- Metric: `index_rebuild_doc_count` (counter)
+
+Pattern: Follow existing index.build.* events in same files
+```
+
+### Section 4: Files to Modify
+
+Be explicit about every file:
+
+```markdown
+## Files to Modify
+
+**Primary implementation:**
+1. /packages/sdk/src/types.ts - Add RebuildStats interface (3 lines)
+2. /packages/sdk/src/store.ts - Add rebuildIndexes() method (~50 lines after ensureIndex)
+3. /packages/sdk/src/index.ts - Export rebuildIndexes and RebuildStats (2 lines)
+4. /packages/cli/src/commands/reindex.ts - New file, ~80 lines (copy structure from ensure-index.ts)
+5. /packages/cli/src/cli.ts - Register command (5 lines, after ensure-index command)
+
+**Supporting files:**
+6. /packages/sdk/src/observability/logs.ts - Add rebuild events (10 lines, near index.build events)
+7. /packages/sdk/src/observability/metrics.ts - Add rebuild metrics (5 lines, near index.build metrics)
+
+**Test files:**
+8. /packages/sdk/src/store.test.ts - Add rebuildIndexes tests (~50 lines)
+9. /packages/cli/test/cli.test.ts - Add reindex command tests (~40 lines)
+
+**Documentation:**
+10. /docs/api-reference.md - Document Store.rebuildIndexes() method
+11. /docs/cli.md or help text - Document reindex command usage
+
+**No changes needed:**
+- /packages/sdk/src/indexes.ts - IndexManager.buildIndex already works, just call it
+- /packages/sdk/src/io.ts - atomicWrite already used by IndexManager
+```
 
 ---
 
-## File Path Rules (CRITICAL)
+## File Path Rules
 
-When referencing files you explored:
+When referencing files:
 
 ### ✅ CORRECT
 ```
-I explored /packages/sdk/src/store.ts and found Store.ensureIndex() at lines 245-267.
-The IndexManager class in /packages/sdk/src/indexes.ts handles index building.
-Check the hierarchy/ directory for examples of Manager pattern.
+Store.ensureIndex() in /packages/sdk/src/store.ts lines 340-365
+The IndexManager class in /packages/sdk/src/indexes.ts
+Check /packages/cli/src/commands/ for command examples
 ```
 
 ### ❌ WRONG
 ```
-I explored [`store.ts`](packages/sdk/src/store.ts) and found `Store.ensureIndex()` at lines 245-267.
-The `IndexManager` class in [`indexes.ts`](/packages/sdk/src/indexes.ts) handles index building.
-Check the `hierarchy/` directory for examples of Manager pattern.
+`Store.ensureIndex()` in [`store.ts`](packages/sdk/src/store.ts) lines 340-365
+The `IndexManager` class in [`indexes.ts`](/packages/sdk/src/indexes.ts)
+Check the `commands/` directory for examples
 ```
 
 **Rules:**
-- **File paths:** Plain text, absolute from repo root (e.g., /packages/sdk/src/store.ts)
-- **Directories:** Trailing slash (e.g., /packages/sdk/src/hierarchy/)
-- **Code symbols:** Backticks for functions/types/classes (e.g., `Store.put()`, `IndexManager`)
-- **Line references:** Plain text (e.g., "lines 245-267" or "around line 150")
-- **NEVER** create Markdown links for files/directories
-- **NEVER** wrap filenames in backticks (backticks are for code/symbols only)
+- **File paths:** Plain text, absolute from repo root
+- **Directories:** Trailing slash
+- **Code symbols:** Backticks (e.g., `Store.put()`, `IndexManager`)
+- **Line numbers:** Plain text (e.g., "lines 340-365")
+- **NEVER** create Markdown links
+- **NEVER** wrap filenames in backticks
 
 ---
 
-## Exploration Checklist
+## Analysis Checklist
 
-Before writing your comment, verify you've explored:
+Before posting your comment, verify you've documented:
 
-**For any feature:**
-- [ ] Read the main file mentioned in the issue
-- [ ] Found and read 2-3 similar existing features
-- [ ] Identified the patterns they follow
-- [ ] Located the integration points (what functions/classes are called)
-- [ ] Checked how errors are handled
-- [ ] Found the test files for similar features
-- [ ] Noted the observability patterns (logs/metrics)
+**Existing Code:**
+- [ ] Located similar features and documented their locations/line numbers
+- [ ] Documented function signatures and what they do
+- [ ] Identified what existing functions to call
+- [ ] Found patterns in similar features
 
-**For SDK features:**
-- [ ] Read /packages/sdk/src/types.ts for interface patterns
-- [ ] Read /packages/sdk/src/store.ts for Store method patterns
-- [ ] Read /packages/sdk/src/validation.ts for validation patterns
-- [ ] Read /packages/sdk/src/errors.ts for error classes
+**Implementation Map:**
+- [ ] Listed every new function/type to create with location
+- [ ] Provided function signatures and return types
+- [ ] Documented data flow (A → B → C)
+- [ ] Specified build order (dependencies)
 
-**For CLI features:**
-- [ ] Read /packages/cli/src/cli.ts for command registration
-- [ ] Read 1-2 similar commands in /packages/cli/src/commands/
-- [ ] Checked how they call SDK methods
-- [ ] Noted argument parsing and output formatting patterns
+**Patterns & Edge Cases:**
+- [ ] Documented patterns from similar features
+- [ ] Listed edge cases from existing code
+- [ ] Provided performance targets
+- [ ] Documented observability patterns
 
-**For MCP features:**
-- [ ] Read /packages/server/src/tools.ts for tool definition patterns
-- [ ] Read /packages/server/src/schemas.ts for Zod validation patterns
-- [ ] Read 1-2 similar tools to see handler patterns
+**Files:**
+- [ ] Listed every file to modify with line counts
+- [ ] Noted files that don't need changes
+- [ ] Included test files
 
 ---
 
-## Example Comment (After Exploration)
+## Example Comment
 
 **Issue:** Add `jsonstore reindex` command to rebuild indexes
 
-**Your comment after 5-10 min exploration:**
+**Your comment:**
 
 ```markdown
-I spent ~8 minutes exploring the codebase to understand how this should be implemented. Here's what I found:
+## Relevant Existing Code
 
-## Existing Patterns Discovered
+**Index operations (pattern to follow):**
+- `Store.ensureIndex(type, field)` in /packages/sdk/src/store.ts lines 340-365
+  - Validates, then calls IndexManager.buildIndex()
+  - Returns void, throws ValidationError on bad input
 
-**Index operations pattern (from Store.ensureIndex):**
-I read /packages/sdk/src/store.ts lines 340-365 and /packages/sdk/src/indexes.ts lines 120-180. The pattern is:
-- Store method coordinates and validates
-- IndexManager owns the index format and building logic
-- Store never directly touches index files, always delegates to IndexManager
-- Uses atomicWrite() for all index file operations
+- `IndexManager.buildIndex(type, field)` in /packages/sdk/src/indexes.ts lines 120-180
+  - Scans docs, builds map, writes with atomicWrite()
+  - Returns { field, entries, durationMs }
 
-**CLI command pattern (from ensure-index command):**
-I read /packages/cli/src/commands/ensure-index.ts. Commands follow this structure:
-- Parse arguments (type, field)
-- Open store with config from --dir or DATA_ROOT env
-- Call SDK method (store.ensureIndex)
-- Display results with statistics
-- Handle errors with appropriate exit codes (1=validation, 3=I/O)
+**CLI command pattern:**
+- `ensure-index` in /packages/cli/src/commands/ensure-index.ts
+  - Structure: parse args → open store → call SDK → display results
+  - Exit codes: 0=success, 1=validation, 3=I/O
 
-## Recommended Implementation
+**Similar stat-returning operation:**
+- `Store.format()` in /packages/sdk/src/store.ts lines 400-450
+  - Returns { docsFormatted, durationMs }
+  - Reports progress > 1000 docs
+  - Reads config from this.options when --all flag
 
-Based on existing patterns, here's how reindex should work:
+## Implementation Map
 
-**1. SDK Method (Store.rebuildIndexes)**
-Location: /packages/sdk/src/store.ts (add after ensureIndex method around line 370)
+**1. Add RebuildStats type**
+- Location: /packages/sdk/src/types.ts line ~300 (near StoreStats)
+- Definition: `interface RebuildStats { docsScanned: number; indexesRebuilt: number; durationMs: number }`
+- Export from /packages/sdk/src/index.ts
 
-Pattern to follow: Same as Store.ensureIndex but with force rebuild
-- Signature: `rebuildIndexes(type: string, fields?: string[]): Promise<RebuildStats>`
-- If fields omitted, read from this.options.indexes[type] (same as format operation reads config)
-- For each field: call IndexManager.buildIndex() with force=true flag
-- Return stats like format operation: { docsScanned, indexesRebuilt, durationMs }
+**2. Add Store.rebuildIndexes() method**
+- Location: /packages/sdk/src/store.ts after ensureIndex (line ~370)
+- Signature: `async rebuildIndexes(type: string, fields?: string[]): Promise<RebuildStats>`
+- Logic:
+  ```typescript
+  // If fields undefined, read from this.options.indexes[type]
+  const fieldsToRebuild = fields ?? this.options.indexes?.[type] ?? [];
 
-Integration:
-- Uses existing IndexManager.buildIndex() method (may need to add force param)
-- Follows error handling from ensureIndex: log per-field errors but continue
-- Uses atomicWrite pattern (already in IndexManager)
+  // For each field:
+  //   1. Delete index file: this.#removeIndexFile(type, field)
+  //   2. Rebuild: await this.#indexManager.buildIndex(type, field)
+  //   3. Collect stats
 
-**2. CLI Command (reindex)**
-Location: /packages/cli/src/commands/reindex.ts (new file, copy structure from ensure-index.ts)
+  // Return { docsScanned, indexesRebuilt, durationMs }
+  ```
+- Calls:
+  - `IndexManager.buildIndex()` (already exists in indexes.ts)
+  - `removeDocument()` from io.ts to delete index file
+  - `list(type)` to get document count
 
-Pattern to follow: Same as ensure-index command structure
-- Register in cli.ts: `program.command('reindex <type> [fields...]')`
-- Parse args, open store, call store.rebuildIndexes()
-- Display stats: "Rebuilt 3 indexes: status (50 entries), priority (12 entries) in 1.2s"
-- Add --all flag to rebuild all indexes for type (reads from config)
+**3. Add CLI command**
+- Location: Create /packages/cli/src/commands/reindex.ts
+- Register: /packages/cli/src/cli.ts add `program.command('reindex <type> [fields...]')`
+- Structure: (copy from ensure-index.ts)
+  ```typescript
+  // Parse: type (required), fields (optional array)
+  // Open store from --dir or DATA_ROOT
+  // Call: stats = await store.rebuildIndexes(type, fields)
+  // Display: "Rebuilt 3 indexes: status (50), priority (12) in 1.2s"
+  ```
+- Flag: `--all` passes undefined for fields (rebuilds all configured)
 
-## Edge Cases Found in Similar Code
+**Data flow:**
+```
+reindex.ts → Store.rebuildIndexes() → for each field:
+  → remove index file
+  → IndexManager.buildIndex() → atomicWrite()
+→ return stats → display
+```
 
-From Store.ensureIndex and Store.format:
-1. **Corrupted files:** ensureIndex rebuilds silently if index corrupted, reindex should explicitly delete first
-2. **Hidden directories:** format skips .git, reindex should skip when scanning docs
-3. **Progress reporting:** format reports every 100 docs for >1k datasets, reindex should match (every 1000 docs for >5k)
-4. **Partial failures:** ensureIndex continues if one field fails, reindex should collect errors and continue
+**Build order:**
+1. RebuildStats type (no deps)
+2. Store.rebuildIndexes() (uses RebuildStats, calls IndexManager)
+3. Export from index.ts
+4. CLI command (calls Store.rebuildIndexes)
+5. Register in cli.ts
 
-## Performance & Observability
+## Patterns to Follow
 
-From existing index and format operations:
-- **Target:** p95 ≤ 2s for 10k docs (matches format operation SLO)
-- **Logs:** Add index.rebuild.start/end events in /packages/sdk/src/observability/logs.ts (follows index.build.* pattern)
-- **Metrics:** Add index_rebuild_duration_ms in metrics.ts (matches index_build_duration_ms pattern)
-- **Progress:** Report progress for datasets > 5k docs (pattern from format)
+**From Store.ensureIndex:**
+- Store coordinates, IndexManager owns format
+- Use atomicWrite() for index files
+- Validate before delegating
+- Log per-field errors but continue
 
-## Build Order
+**From Store.format:**
+- Return stats object
+- Progress reporting > 1000 docs
+- Read this.options.indexes[type] for --all
 
-Based on dependencies I found:
-1. First: Check if IndexManager.buildIndex needs force parameter (may already support via delete-then-rebuild)
-2. Then: Add Store.rebuildIndexes() - can be built once IndexManager ready
-3. Finally: Add CLI command - depends on Store method existing
+**From CLI commands:**
+- Exit code 1=validation, 3=I/O
+- Human-readable output with stats
+
+## Edge Cases
+
+1. **Corrupted file:** Delete first to force rebuild (unlike ensureIndex which rebuilds in place)
+2. **No docs:** list() returns [], buildIndex handles empty gracefully
+3. **Partial failure:** Log error, continue to next field, return partial stats
+4. **No config:** If --all but no indexes[type], error: "No indexes configured for type 'X'"
+5. **Progress:** Report every 1000 docs for > 5k datasets
+
+**Performance:** Target < 2s for 10k docs (matches format SLO)
+
+## Observability
+
+**Add to /packages/sdk/src/observability/logs.ts (near index.build.* events):**
+- `index.rebuild.start` with { type, fields }
+- `index.rebuild.end` with { type, fields, docsScanned, indexesRebuilt, durationMs }
+- `index.rebuild.error` with { type, field, error }
+
+**Add to /packages/sdk/src/observability/metrics.ts:**
+- `index_rebuild_duration_ms` (histogram)
+- `index_rebuild_doc_count` (counter)
 
 ## Files to Modify
 
-Primary:
-- /packages/sdk/src/store.ts - Add rebuildIndexes method
-- /packages/sdk/src/indexes.ts - Possibly add force param to buildIndex (or just delete index file first)
-- /packages/cli/src/commands/reindex.ts - New command file
-- /packages/cli/src/cli.ts - Register command
+**Primary:**
+1. /packages/sdk/src/types.ts - Add RebuildStats (3 lines near StoreStats)
+2. /packages/sdk/src/store.ts - Add rebuildIndexes() (~50 lines after ensureIndex)
+3. /packages/sdk/src/index.ts - Export rebuildIndexes, RebuildStats (2 lines)
+4. /packages/cli/src/commands/reindex.ts - New file (~80 lines, copy ensure-index structure)
+5. /packages/cli/src/cli.ts - Register command (5 lines after ensure-index)
 
-Supporting:
-- /packages/sdk/src/types.ts - Add RebuildStats type
-- /packages/sdk/src/observability/logs.ts - Add rebuild events
-- /packages/sdk/src/observability/metrics.ts - Add rebuild metric
+**Supporting:**
+6. /packages/sdk/src/observability/logs.ts - Add events (10 lines)
+7. /packages/sdk/src/observability/metrics.ts - Add metrics (5 lines)
 
-Tests:
-- /packages/sdk/src/store.test.ts - Unit tests for rebuildIndexes
-- /packages/cli/test/cli.test.ts - Integration tests for reindex command
+**Tests:**
+8. /packages/sdk/src/store.test.ts - rebuildIndexes tests (~50 lines)
+9. /packages/cli/test/cli.test.ts - reindex command tests (~40 lines)
+
+**No changes needed:**
+- /packages/sdk/src/indexes.ts (IndexManager.buildIndex already works)
+- /packages/sdk/src/io.ts (atomicWrite already used)
 ```
 
 ---
 
 ## Key Principle
 
-**Don't guess or assume.** Spend the time to:
-1. **Read the actual code** for similar features
-2. **Find the patterns** they use
-3. **Share what you discovered** and how it should guide this implementation
+Your comment should be a **complete reference** that lets the implementing agent start coding immediately without exploring the codebase themselves.
 
-Your comment is most valuable when it shows "I explored X and found Y, so this feature should follow pattern Z."
+Think of it as writing documentation for a new developer joining the project - they need to know:
+- What already exists and where
+- What to build and where
+- How it all connects
+- What patterns to follow
 
